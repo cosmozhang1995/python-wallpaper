@@ -53,11 +53,9 @@ class DesktopWidget(QWidget):
         self.webchandelegate = DesktopWidget.WebChannelDelegate(self)
         self.webchan = QWebChannel()
         self.webchan.registerObject("context", self.webchandelegate)
-        self.web = QWebEngineView()
+        self.web = DesktopWidget.WebView()
         self.web.load(QUrl.fromLocalFile(os.path.join(system.execpath, "wallpapergui", "www", "DesktopWidget.html")))
         self.web.page().setWebChannel(self.webchan)
-        self.web.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.web.setStyleSheet("background:transparent")
         self.web.page().setBackgroundColor(QColor(0,0,0,0))
         self.layout = QVBoxLayout()
         self.layout.setMargin(0)
@@ -119,6 +117,15 @@ class DesktopWidget(QWidget):
     def onTrayActionReload(self):
         self.web.reload()
         self.web.page().setWebChannel(self.webchan)
+
+    class WebView(QWebEngineView):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.setContextMenuPolicy(Qt.NoContextMenu)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            self.setStyleSheet("background:transparent")
+        def contextMenuEvent(self, event):
+            return QWebEngineView.contextMenuEvent(self, event)
 
     class WebChannelDelegate(QObject):
         def __init__(self, parent):

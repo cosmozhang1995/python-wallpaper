@@ -15,6 +15,10 @@ function document_ready(context) {
   };
   window.checkWrapperSize = checkWrapperSize;
   checkWrapperSize();
+  // forbid default actions
+  $(document).on("click", function(event) {
+    console.log(event);
+  });
   // drag page to move the context window
   $(document).on("mousedown", function(event) {
     context.mousePressEvent(event.screenX, event.screenY)
