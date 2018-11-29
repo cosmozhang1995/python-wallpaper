@@ -2,10 +2,18 @@
 <html>
 <head>
 <link rel="stylesheet" type="text/css" href="./DesktopWidget.css">
+<link rel="stylesheet" type="text/css" href="./node_modules/@fortawesome/fontawesome-free/css/all.min.css">
 </head>
 <body>
 <div id="main-wrapper" class="main-wrapper">
-  <div class="title-bar">Hello World</div>
+  <div id="title-bar-wrapper" class="title-bar-wrapper">
+    <div class="block title-bar">Hello World</div>
+    <div class="block active-visible title-button hidden" id="button-info"><i class="fa fa-question"></i></div>
+    <div class="block active-visible title-button hidden" id="button-settings"><i class="fa fa-sliders-h"></i></div>
+  </div>
+  <div id="content-block" class="block active-visible content-block below hidden">
+    <div>Hi here comes my content<br/>I'm a cute girl~ I'm a cute girl~ I'm a cute girl~ I'm a cute girl~ </div>
+  </div>
 </div>
 <script type="text/javascript" src="./qwebchannel.js"></script>
 <script type="text/javascript" src="./node_modules/jquery/dist/jquery.min.js"></script>

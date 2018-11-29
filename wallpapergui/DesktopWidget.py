@@ -3,7 +3,7 @@ import sys,os
 from PySide2.QtCore import Qt, QObject, Signal, Slot, QPoint, QUrl, QEvent
 from PySide2.QtWidgets import QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QAction
 from PySide2.QtGui import QPainter, QColor, QIcon
-from PySide2.QtWebEngineWidgets import QWebEngineView
+from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
 from PySide2.QtWebChannel import QWebChannel
 
 import requests
@@ -13,6 +13,8 @@ from wallpaper.wallpaper import set_wallpaper
 from wallpaper.image import ImageItem
 from wallpaper.system import system
 from wallpaper.manager.bing import BingManager
+
+from .geo import Rect, Point
 
 import win32con, win32gui, win32api
 def findDesktopIconWnd():
@@ -28,6 +30,73 @@ def findDesktopIconWnd():
     results = []
     win32gui.EnumWindows(EnumWindowsCallback, results)
     return results[0] if len(results) > 0 else None
+
+class MonitorInfo:
+    def __init__(self, winapi_monitorinfo):
+        self.monitor = Rect(left   = winapi_monitorinfo["Monitor"][0],
+                            top    = winapi_monitorinfo["Monitor"][1],
+                            right  = winapi_monitorinfo["Monitor"][2],
+                            bottom = winapi_monitorinfo["Monitor"][3])
+        self.work = Rect(left   = winapi_monitorinfo["Work"][0],
+                         top    = winapi_monitorinfo["Work"][1],
+                         right  = winapi_monitorinfo["Work"][2],
+                         bottom = winapi_monitorinfo["Work"][3])
+        self.flag = winapi_monitorinfo["Flags"]
+        self.device = winapi_monitorinfo["Device"]
+    @property
+    def primary(self):
+        return bool(self.flag & win32con.MONITORINFOF_PRIMARY)
+    @classmethod
+    def all(cls):
+        return [MonitorInfo(win32api.GetMonitorInfo(item[0])) for item in win32api.EnumDisplayMonitors(None, None)]
+    @classmethod
+    def get(cls, primary=None, device=None):
+        monitors = [MonitorInfo(win32api.GetMonitorInfo(item[0])) for item in win32api.EnumDisplayMonitors(None, None)]
+        for monitor in monitors:
+            if primary and not monitor.primary: continue
+            if device and not monitor.device == device: continue
+            return monitor
+        return None
+
+class WindowPosition:
+    ANCHOR_LEFT = 1 << 0
+    ANCHOR_HCENTER = 1 << 1
+    ANCHOR_RIGHT = 1 << 2
+    ANCHOR_TOP = 1 << 3
+    ANCHOR_VCENTER = 1 << 4
+    ANCHOR_BOTTOM = 1 << 5
+    def __init__(self, monitor=0, x=0, y=0, width=0, height=0, anchor=None):
+        if anchor is None: anchor = WindowPosition.ANCHOR_LEFT | WindowPosition.ANCHOR_TOP
+        self.monitor = monitor
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.anchor = anchor
+    def copy(self):
+        return WindowPosition(monitor=self.monitor, x=self.x, y=self.y, width=self.width, height=self.height, anchor=self.anchor)
+    @property
+    def left(self):
+        if self.anchor & WindowPosition.ANCHOR_LEFT:
+            return self.x
+        elif self.anchor & WindowPosition.ANCHOR_RIGHT:
+            return self.x - self.width
+        else:
+            return int(self.x - self.width/2)
+    @property
+    def right(self):
+        return self.left + self.width
+    @property
+    def top(self):
+        if self.anchor & WindowPosition.ANCHOR_TOP:
+            return self.y
+        elif self.anchor & WindowPosition.ANCHOR_BOTTOM:
+            return self.y - self.height
+        else:
+            return int(self.y - self.height/2)
+    @property
+    def bottom(self):
+        return self.top + self.height
 
 class DesktopWidget(QWidget):
     def __init__(self):
@@ -47,8 +116,11 @@ class DesktopWidget(QWidget):
         self.mousePressPos = None
         self.mousePressWindowPos = QPoint(100,100)
         self.mouseEnterred = False
-        self._windowPosition = self.loadWindowPosition(QPoint(0,0))
-        self.hidden = True
+        self.windowPosition = self.loadWindowPosition(None)
+        self.holdWindowPosition = False
+        if self.windowPosition is None:
+            monitor = MonitorInfo.get(primary=True)
+            self.windowPosition = WindowPosition(monitor=monitor, x=0, y=0, width=0, height=0, anchor=WindowPosition.ANCHOR_LEFT|WindowPosition.ANCHOR_TOP)
         # build layout
         self.webchandelegate = DesktopWidget.WebChannelDelegate(self)
         self.webchan = QWebChannel()
@@ -57,6 +129,7 @@ class DesktopWidget(QWidget):
         self.web.load(QUrl.fromLocalFile(os.path.join(system.execpath, "wallpapergui", "www", "DesktopWidget.html")))
         self.web.page().setWebChannel(self.webchan)
         self.web.page().setBackgroundColor(QColor(0,0,0,0))
+        # self.web.page().mainFrame().setScrollBarPolicy(QtCore.Qt.Vertical, QtCore.Qt.ScrollBarAlwaysOff);
         self.layout = QVBoxLayout()
         self.layout.setMargin(0)
         self.layout.setSpacing(0)
@@ -84,16 +157,48 @@ class DesktopWidget(QWidget):
         self.systemTrayMenu = menu
         self.systemTray.setContextMenu(self.systemTrayMenu)
 
-    @property
-    def windowPosition(self):
-        if not self.hidden and self.isVisible():
-            h = self.winId()
-            hDesktop = findDesktopIconWnd()
-            rect = win32gui.GetWindowRect(h)
-            rectDesktop = win32gui.GetWindowRect(hDesktop)
-            self._windowPosition = QPoint(rect[0] - rectDesktop[0], rect[1] - rectDesktop[1])
-        return self._windowPosition
-    
+    def calculateWindowPosition(self):
+        h = self.winId()
+        rect = Rect(winapi_rect=win32gui.GetWindowRect(h))
+        monitors = MonitorInfo.all()
+        overlaps = [(rect & monitor.work) for monitor in monitors]
+        overlapareas = [(region.area if region else -1) for region in overlaps]
+        imonitor = sorted(range(len(monitors)), key = lambda i: -overlapareas[i])[0]
+        if overlapareas[imonitor] > 0 or not self.windowPosition:
+            monitor = monitors[imonitor]
+        else:
+            monitor = self.windowPosition.monitor
+        anchor = 0
+        if rect.hcenter < monitor.work.hcenter:
+            anchor |= WindowPosition.ANCHOR_LEFT
+            posx = rect.left
+        elif rect.hcenter > monitor.work.hcenter:
+            anchor |= WindowPosition.ANCHOR_RIGHT
+            posx = rect.right
+        else:
+            anchor |= WindowPosition.ANCHOR_HCENTER
+            posx = rect.hcenter
+        if rect.vcenter < monitor.work.vcenter:
+            anchor |= WindowPosition.ANCHOR_TOP
+            posy = rect.top
+        elif rect.vcenter > monitor.work.vcenter:
+            anchor |= WindowPosition.ANCHOR_BOTTOM
+            posy = rect.bottom
+        else:
+            anchor |= WindowPosition.ANCHOR_HCENTER
+            posy = rect.vcenter
+        posx -= monitor.work.left
+        posy -= monitor.work.top
+        return WindowPosition(monitor=monitor, x=posx, y=posy, width=rect.width, height=rect.height, anchor=anchor)
+
+
+    def moveWindow(self, winpos):
+        hDesktop = findDesktopIconWnd()
+        rectDesktop = Rect(winapi_rect=win32gui.GetWindowRect(hDesktop))
+        win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height, True)
+        if not self.holdWindowPosition:
+            self.windowPosition = self.calculateWindowPosition()
+            self.webUpdateAnchorStatus()
 
     def show(self):
         super().show()
@@ -106,9 +211,9 @@ class DesktopWidget(QWidget):
         lWinStyle = lWinStyle & (~win32con.WS_MINIMIZEBOX)
         lWinStyle = lWinStyle & (~win32con.WS_SIZEBOX)
         win32gui.SetWindowLong(self.winId(), win32con.GWL_STYLE, lWinStyle)
-        win32gui.MoveWindow(self.winId(), self.windowPosition.x(), self.windowPosition.y(), self.width(), self.height(), True)
+        self.moveWindow(self.windowPosition)
         print(hDesktop, self.winId())
-        self.hidden = False
+        self.webUpdateAnchorStatus()
 
     def onTrayActionClose(self):
         self.close()
@@ -124,6 +229,7 @@ class DesktopWidget(QWidget):
             self.setContextMenuPolicy(Qt.NoContextMenu)
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
             self.setStyleSheet("background:transparent")
+            self.settings().setAttribute(QWebEngineSettings.ShowScrollBars, False)
         def contextMenuEvent(self, event):
             return QWebEngineView.contextMenuEvent(self, event)
 
@@ -135,6 +241,8 @@ class DesktopWidget(QWidget):
             self.onMouseMoveEvent.connect(parent.onMouseMoveEvent)
             self.onMouseReleaseEvent.connect(parent.onMouseReleaseEvent)
             self.onResizeWindow.connect(parent.onResizeWindow)
+            self.onHoldWindowPosition.connect(parent.onHoldWindowPosition)
+            self.onRequestAnchorTopStatus.connect(parent.onRequestAnchorTopStatus)
         onDebug = Signal(str)
         @Slot(str)
         def debug(self, operation):
@@ -155,27 +263,57 @@ class DesktopWidget(QWidget):
         @Slot(int, int)
         def resizeWindow(self, w, h):
             self.onResizeWindow.emit(w,h)
+        onHoldWindowPosition = Signal(bool)
+        @Slot(bool)
+        def holdWindowPosition(self, holding):
+            self.onHoldWindowPosition.emit(holding)
+        onRequestAnchorTopStatus = Signal(str)
+        @Slot(str)
+        def requestAnchorTopStatus(self, callback):
+            self.onRequestAnchorTopStatus.emit(callback)
 
     def onDebug(self, operation):
         eval(operation)
     def onResizeWindow(self, w, h):
-        win32gui.MoveWindow(self.winId(), self.windowPosition.x(), self.windowPosition.y(), w, h, True)
+        winpos = self.windowPosition.copy()
+        winpos.width = w
+        winpos.height = h
+        self.moveWindow(winpos)
 
     def onMousePressEvent(self, x, y):
-        self.mousePressPos = QPoint(x,y)
+        self.mousePressPos = Point(x,y)
         self.mousePressWindowPos = self.windowPosition
     def onMouseMoveEvent(self, x, y):
         if self.mousePressPos:
-            pos = QPoint(x,y)
-            dx = pos.x() - self.mousePressPos.x()
-            dy = pos.y() - self.mousePressPos.y()
-            win32gui.MoveWindow(self.winId(), self.mousePressWindowPos.x() + dx, self.mousePressWindowPos.y() + dy, self.width(), self.height(), True)
+            pos = Point(x,y)
+            dx = pos.x - self.mousePressPos.x
+            dy = pos.y - self.mousePressPos.y
+            winpos = self.mousePressWindowPos.copy()
+            winpos.x += dx
+            winpos.y += dy
+            self.moveWindow(winpos)
     def onMouseReleaseEvent(self, x, y):
         if self.mousePressPos:
-            pos = QPoint(x,y)
-            self.mousePressWindowPos += pos - self.mousePressPos
+            pos = Point(x,y)
+            dx = pos.x - self.mousePressPos.x
+            dy = pos.y - self.mousePressPos.y
+            winpos = self.mousePressWindowPos.copy()
+            winpos.x += dx
+            winpos.y += dy
+            self.moveWindow(winpos)
+            self.mousePressWindowPos = None
             self.mousePressPos = None
             self.saveWindowPosition(self.windowPosition)
+
+    def onHoldWindowPosition(self, holding):
+        self.holdWindowPosition = holding
+
+    def onRequestAnchorTopStatus(self, callback):
+        self.web.page().runJavaScript("%s(%s);" % (callback, ("true" if (self.windowPosition.anchor & WindowPosition.ANCHOR_TOP) else "false")))
+
+    def webUpdateAnchorStatus(self):
+        print("webUpdateAnchorStatus", self.windowPosition.x, self.windowPosition.y, self.windowPosition.anchor & WindowPosition.ANCHOR_TOP)
+        self.web.page().runJavaScript("window.widget_anchor_top = %s;" % ("true" if (self.windowPosition.anchor & WindowPosition.ANCHOR_TOP) else "false"))
 
     def changeWallpaper(self):
         def callback():
@@ -188,7 +326,7 @@ class DesktopWidget(QWidget):
     def saveWindowPosition(self, pos):
         savingfilepath = os.path.join(system.appdatadir, "window-position.txt")
         file = open(savingfilepath, "w")
-        file.write("%d,%d" % (pos.x(),pos.y()))
+        file.write("%s,%d,%d,%d,%d,%d" % (pos.monitor.device, pos.x, pos.y, pos.width, pos.height, pos.anchor))
         file.close()
 
     def loadWindowPosition(self, default=None):
@@ -197,7 +335,9 @@ class DesktopWidget(QWidget):
             file = open(savingfilepath, "r")
             filecontent = file.read()
             file.close()
-            values = [int(word.strip()) for word in filecontent.split(",")]
-            return QPoint(values[0], values[1])
+            values = [word.strip() for word in filecontent.split(",")]
+            monitor = MonitorInfo.get(device=values[0])
+            if monitor is None: monitor = MonitorInfo.get(primary=True)
+            return WindowPosition(monitor=monitor, x=int(values[1]), y=int(values[2]), width=int(values[3]), height=int(values[4]), anchor=int(values[5]))
         else:
             return default

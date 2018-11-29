@@ -3,6 +3,9 @@ html,body {
   margin: 0;
   background: transparent;
   /*background-color: #0f0;*/
+  font-size: 18px;
+  font-family: "Segoe UI", Arial;
+  overflow: visible;
 }
 .main-wrapper {
   position: absolute;
@@ -11,18 +14,59 @@ html,body {
   width: auto;
   height: auto;
   user-select: none;
+  font-size: 0;
 }
-.title-bar {
-  width: auto;
-  height: auto;
+.block {
   background-color: #000000b0;
-  color: white;
-  padding: 10px 20px;
-  font-size: 18px;
-  font-family: "Segoe UI", Arial;
   cursor: pointer;
+  color: white;
+}
+.main-wrapper:hover .block {
+  background-color: #000000d0;
+}
+
+.title-bar-wrapper {
   white-space: nowrap;
 }
-.title-bar:hover {
-  background-color: #000000d0;
+.title-bar {
+  display: inline-block;
+  vertical-align: top;
+  padding: 0 20px;
+  height: 50px;
+  line-height: 50px;
+  box-sizing: border-box;
+  white-space: nowrap;
+  font-size: 1rem;
+}
+.title-button {
+  display: inline-block;
+  vertical-align: top;
+  padding: 0;
+  text-align: center;
+  width: 50px;
+  height: 50px;
+  line-height: 50px;
+  box-sizing: border-box;
+  white-space: nowrap;
+  margin-left: 5px;
+  font-size: 1rem;
+}
+.title-button:hover {
+  background-color: #000000 !important;
+}
+.content-block {
+  width: auto;
+  height: auto;
+  padding: 20px;
+  font-size: 1rem;
+}
+.content-block.below {
+  margin-top: 5px;
+}
+.content-block.beyond {
+  margin-bottom: 5px;
+}
+
+.hidden {
+  display: none !important;
 }
