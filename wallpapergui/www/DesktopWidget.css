@@ -1,0 +1,28 @@
+html,body {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  /*background-color: #0f0;*/
+}
+.main-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: auto;
+  height: auto;
+  user-select: none;
+}
+.title-bar {
+  width: auto;
+  height: auto;
+  background-color: #000000b0;
+  color: white;
+  padding: 10px 20px;
+  font-size: 18px;
+  font-family: "Segoe UI", Arial;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.title-bar:hover {
+  background-color: #000000d0;
+}

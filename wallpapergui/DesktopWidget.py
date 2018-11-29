@@ -1,8 +1,10 @@
 import sys,os
 
-from PySide2.QtCore import Qt, QPoint
+from PySide2.QtCore import Qt, QObject, Signal, Slot, QPoint, QUrl, QEvent
 from PySide2.QtWidgets import QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QAction
 from PySide2.QtGui import QPainter, QColor, QIcon
+from PySide2.QtWebEngineWidgets import QWebEngineView
+from PySide2.QtWebChannel import QWebChannel
 
 import requests
 import json
@@ -10,6 +12,7 @@ import json
 from wallpaper.wallpaper import set_wallpaper
 from wallpaper.image import ImageItem
 from wallpaper.system import system
+from wallpaper.manager.bing import BingManager
 
 import win32con, win32gui, win32api
 def findDesktopIconWnd():
@@ -35,21 +38,32 @@ class DesktopWidget(QWidget):
         self.txtcolor = "#ffffff" # QColor(255, 255, 255)
         self.txtpadding = 8
         self.fontsize = 18
-        self.fontfamily = "\"Segoe UI\", Arial";
+        self.fontfamily = "\"Segoe UI\", Arial"
         # self.fontfamily = "\"Microsoft YaHei\", Arial";
         # other properties
+        self.manager = BingManager()
         self.imageitem = None
         # mouse dragging properties
         self.mousePressPos = None
         self.mousePressWindowPos = QPoint(100,100)
         self.mouseEnterred = False
-        self.windowPosition = self.loadWindowPosition(QPoint(0,0))
+        self._windowPosition = self.loadWindowPosition(QPoint(0,0))
+        self.hidden = True
         # build layout
-        self.text = QLabel("Hello World")
+        self.webchandelegate = DesktopWidget.WebChannelDelegate(self)
+        self.webchan = QWebChannel()
+        self.webchan.registerObject("context", self.webchandelegate)
+        self.web = QWebEngineView()
+        self.web.load(QUrl.fromLocalFile(os.path.join(system.execpath, "wallpapergui", "www", "DesktopWidget.html")))
+        self.web.page().setWebChannel(self.webchan)
+        self.web.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.web.setStyleSheet("background:transparent")
+        self.web.page().setBackgroundColor(QColor(0,0,0,0))
         self.layout = QVBoxLayout()
-        self.layout.addWidget(self.text)
+        self.layout.setMargin(0)
+        self.layout.setSpacing(0)
+        self.layout.addWidget(self.web)
         self.setLayout(self.layout)
-        self.updateWidgetStyles()
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # build system tray menu
         self.systemTray = QSystemTrayIcon(self)
@@ -61,6 +75,10 @@ class DesktopWidget(QWidget):
         action_change.setText("Change Wallpaper")
         action_change.triggered.connect(self.onTrayActionChange)
         menu.addAction(action_change)
+        action_reload = QAction(menu)
+        action_reload.setText("Reload")
+        action_reload.triggered.connect(self.onTrayActionReload)
+        menu.addAction(action_reload)
         action_close = QAction(menu)
         action_close.setText("Close")
         action_close.triggered.connect(self.onTrayActionClose)
@@ -68,10 +86,16 @@ class DesktopWidget(QWidget):
         self.systemTrayMenu = menu
         self.systemTray.setContextMenu(self.systemTrayMenu)
 
-    # def paintEvent(self, event):
-    #     painter = QPainter(self)
-    #     alpha = 0x7f if self.mouseEnterred else 0x00
-    #     painter.fillRect(self.rect(), QColor(0xff, 0xff, 0xff, alpha))
+    @property
+    def windowPosition(self):
+        if not self.hidden and self.isVisible():
+            h = self.winId()
+            hDesktop = findDesktopIconWnd()
+            rect = win32gui.GetWindowRect(h)
+            rectDesktop = win32gui.GetWindowRect(hDesktop)
+            self._windowPosition = QPoint(rect[0] - rectDesktop[0], rect[1] - rectDesktop[1])
+        return self._windowPosition
+    
 
     def show(self):
         super().show()
@@ -84,89 +108,75 @@ class DesktopWidget(QWidget):
         lWinStyle = lWinStyle & (~win32con.WS_MINIMIZEBOX)
         lWinStyle = lWinStyle & (~win32con.WS_SIZEBOX)
         win32gui.SetWindowLong(self.winId(), win32con.GWL_STYLE, lWinStyle)
-        # win32gui.SetLayeredWindowAttributes(self.winId(), 0, 0, win32con.LWA_ALPHA)
-        # win32gui.ShowWindowAsync
         win32gui.MoveWindow(self.winId(), self.windowPosition.x(), self.windowPosition.y(), self.width(), self.height(), True)
         print(hDesktop, self.winId())
+        self.hidden = False
 
     def onTrayActionClose(self):
         self.close()
     def onTrayActionChange(self):
         self.changeWallpaper()
+    def onTrayActionReload(self):
+        self.web.reload()
+        self.web.page().setWebChannel(self.webchan)
 
-    def enterEvent(self, event):
-        self.mouseEnterred = True
-        self.updateWidgetStyles()
-    def leaveEvent(self, event):
-        self.mouseEnterred = False
-        self.updateWidgetStyles()
+    class WebChannelDelegate(QObject):
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.onDebug.connect(parent.onDebug)
+            self.onMousePressEvent.connect(parent.onMousePressEvent)
+            self.onMouseMoveEvent.connect(parent.onMouseMoveEvent)
+            self.onMouseReleaseEvent.connect(parent.onMouseReleaseEvent)
+            self.onResizeWindow.connect(parent.onResizeWindow)
+        onDebug = Signal(str)
+        @Slot(str)
+        def debug(self, operation):
+            self.onDebug.emit(operation)
+        onMousePressEvent = Signal(int, int)
+        @Slot(int, int)
+        def mousePressEvent(self, x, y):
+            self.onMousePressEvent.emit(x,y)
+        onMouseMoveEvent = Signal(int, int)
+        @Slot(int, int)
+        def mouseMoveEvent(self, x, y):
+            self.onMouseMoveEvent.emit(x,y)
+        onMouseReleaseEvent = Signal(int, int)
+        @Slot(int, int)
+        def mouseReleaseEvent(self, x, y):
+            self.onMouseReleaseEvent.emit(x,y)
+        onResizeWindow = Signal(int, int)
+        @Slot(int, int)
+        def resizeWindow(self, w, h):
+            self.onResizeWindow.emit(w,h)
 
-    def mousePressEvent(self, event):
-        self.mousePressPos = event.globalPos()
+    def onDebug(self, operation):
+        eval(operation)
+    def onResizeWindow(self, w, h):
+        win32gui.MoveWindow(self.winId(), self.windowPosition.x(), self.windowPosition.y(), w, h, True)
+
+    def onMousePressEvent(self, x, y):
+        self.mousePressPos = QPoint(x,y)
         self.mousePressWindowPos = self.windowPosition
-        self.updateWidgetStyles()
-    def mouseMoveEvent(self, event):
+    def onMouseMoveEvent(self, x, y):
         if self.mousePressPos:
-            pos = event.globalPos()
+            pos = QPoint(x,y)
             dx = pos.x() - self.mousePressPos.x()
             dy = pos.y() - self.mousePressPos.y()
             win32gui.MoveWindow(self.winId(), self.mousePressWindowPos.x() + dx, self.mousePressWindowPos.y() + dy, self.width(), self.height(), True)
-    def mouseReleaseEvent(self, event):
+    def onMouseReleaseEvent(self, x, y):
         if self.mousePressPos:
-            pos = event.globalPos()
+            pos = QPoint(x,y)
             self.mousePressWindowPos += pos - self.mousePressPos
-            self.windowPosition = self.mousePressWindowPos
             self.mousePressPos = None
-            self.updateWidgetStyles()
             self.saveWindowPosition(self.windowPosition)
 
     def changeWallpaper(self):
-        imagelist = requests.get("https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=100&nc=1543399734692&pid=hp&FORM=BEHPTB&ensearch=1").text
-        imagelist = json.loads(imagelist)["images"]
-        imageitem_jsonfile_path = os.path.join(system.appdatadir, "imageitem.json")
-        if len(imagelist) == 0:
-            print("No wallpapers available")
-            return
-        imageindex = 0
-        if os.path.isfile(imageitem_jsonfile_path):
-            file = open(imageitem_jsonfile_path, "rb")
-            filecontent = file.read().decode("utf-8")
-            file.close()
-            oldimageitem = json.loads(filecontent)
-            oldimageindex = oldimageitem["index"]
-            if oldimageindex >= len(imagelist) or oldimageitem["hsh"] != imagelist[oldimageindex]:
-                imageindex = (oldimageindex + 1) % len(imagelist)
-        imageitem = imagelist[imageindex]
-        imageitem["index"] = imageindex
-        imageitem_json_str = json.dumps(imageitem)
-        file = open(imageitem_jsonfile_path, "wb")
-        file.write(imageitem_json_str.encode("utf-8"))
-        file.close()
-        imagedata = requests.get("https://cn.bing.com" + imageitem["url"]).content
-        postfix = imageitem["url"].split(".")[-1]
-        imagedata_savepath = os.path.join(system.appdatadir, "download."+postfix)
-        file = open(imagedata_savepath, "wb")
-        file.write(imagedata)
-        file.close()
-        set_wallpaper(ImageItem(imagedata_savepath))
-        self.imageitem = imageitem
+        def callback():
+            self.imageitem = self.manager.next()
+            set_wallpaper(self.imageitem.imagepath)
+            print("here we set wallpaper")
+        self.manager.update(callback)
 
-    def updateWidgetStyles(self):
-        textstyles = ""
-        if self.mouseEnterred:
-            textstyles += "background-color: %s;" % self.bgcolor_hover
-        else:
-            textstyles += "background-color: %s;" % self.bgcolor
-        textstyles += "border: none;"
-        textstyles += "color: %s;" % self.txtcolor
-        textstyles += "padding: %dpx;" % self.txtpadding
-        textstyles += "font-size: %dpx;" % self.fontsize
-        textstyles += "font-family: %s;" % self.fontfamily
-        self.text.setStyleSheet(textstyles)
-        if self.mousePressPos:
-            self.setCursor(Qt.ClosedHandCursor)
-        else:
-            self.setCursor(Qt.OpenHandCursor)
 
     def saveWindowPosition(self, pos):
         savingfilepath = os.path.join(system.appdatadir, "window-position.txt")
