@@ -1,6 +1,6 @@
 import sys,os
 
-from PySide2.QtCore import Qt, QObject, Signal, Slot, QPoint, QUrl, QEvent
+from PySide2.QtCore import Qt, QObject, Signal, Slot, QPoint, QSize, QUrl, QEvent
 from PySide2.QtWidgets import QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QAction
 from PySide2.QtGui import QPainter, QColor, QIcon
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
@@ -101,6 +101,7 @@ class WindowPosition:
 class DesktopWidget(QWidget):
     def __init__(self):
         super().__init__()
+        self.hParent = 0
         # default styles
         self.bgcolor = "rgba(0,0,0,172)" # QColor(0, 0, 0, 0x99)
         self.bgcolor_hover = "rgba(0,0,0,204)" # QColor(0, 0, 0, 0xcc)
@@ -122,40 +123,47 @@ class DesktopWidget(QWidget):
             monitor = MonitorInfo.get(primary=True)
             self.windowPosition = WindowPosition(monitor=monitor, x=0, y=0, width=0, height=0, anchor=WindowPosition.ANCHOR_LEFT|WindowPosition.ANCHOR_TOP)
         # build layout
+        self.layout = QVBoxLayout()
+        self.layout.setMargin(0)
+        self.layout.setSpacing(0)
         self.webchandelegate = DesktopWidget.WebChannelDelegate(self)
         self.webchan = QWebChannel()
         self.webchan.registerObject("context", self.webchandelegate)
         self.web = DesktopWidget.WebView()
-        self.web.load(QUrl.fromLocalFile(os.path.join(system.execpath, "wallpapergui", "www", "DesktopWidget.html")))
+        self.web.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.web.setStyleSheet("background:transparent")
         self.web.page().setWebChannel(self.webchan)
-        self.web.page().setBackgroundColor(QColor(0,0,0,0))
+        self.web.page().setBackgroundColor(Qt.transparent)
+        self.web.load(QUrl.fromLocalFile(os.path.join(system.execpath, "wallpapergui", "www", "DesktopWidget.html")))
         # self.web.page().mainFrame().setScrollBarPolicy(QtCore.Qt.Vertical, QtCore.Qt.ScrollBarAlwaysOff);
-        self.layout = QVBoxLayout()
-        self.layout.setMargin(0)
-        self.layout.setSpacing(0)
         self.layout.addWidget(self.web)
+        # self.text = QLabel("hello")
+        # self.text.setStyleSheet("color: white; font-size: 18px; padding: 10px;")
+        # self.layout.addWidget(self.text)
         self.setLayout(self.layout)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        # build system tray menu
-        self.systemTray = QSystemTrayIcon(self)
-        self.systemTray.setIcon(QIcon("images/bing.png"))
-        self.systemTray.setToolTip("Bing Wallpaper")
-        self.systemTray.show()
-        menu = QMenu(self)
-        action_change = QAction(menu)
-        action_change.setText("Change Wallpaper")
-        action_change.triggered.connect(self.onTrayActionChange)
-        menu.addAction(action_change)
-        action_reload = QAction(menu)
-        action_reload.setText("Reload")
-        action_reload.triggered.connect(self.onTrayActionReload)
-        menu.addAction(action_reload)
-        action_close = QAction(menu)
-        action_close.setText("Close")
-        action_close.triggered.connect(self.onTrayActionClose)
-        menu.addAction(action_close)
-        self.systemTrayMenu = menu
-        self.systemTray.setContextMenu(self.systemTrayMenu)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(True)
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        # # build system tray menu
+        # self.systemTray = QSystemTrayIcon(self)
+        # self.systemTray.setIcon(QIcon("images/bing.png"))
+        # self.systemTray.setToolTip("Bing Wallpaper")
+        # self.systemTray.show()
+        # menu = QMenu(self)
+        # action_change = QAction(menu)
+        # action_change.setText("Change Wallpaper")
+        # action_change.triggered.connect(self.onTrayActionChange)
+        # menu.addAction(action_change)
+        # action_reload = QAction(menu)
+        # action_reload.setText("Reload")
+        # action_reload.triggered.connect(self.onTrayActionReload)
+        # menu.addAction(action_reload)
+        # action_close = QAction(menu)
+        # action_close.setText("Close")
+        # action_close.triggered.connect(self.onTrayActionClose)
+        # menu.addAction(action_close)
+        # self.systemTrayMenu = menu
+        # self.systemTray.setContextMenu(self.systemTrayMenu)
 
     def calculateWindowPosition(self):
         h = self.winId()
@@ -195,15 +203,43 @@ class DesktopWidget(QWidget):
     def moveWindow(self, winpos):
         hDesktop = findDesktopIconWnd()
         rectDesktop = Rect(winapi_rect=win32gui.GetWindowRect(hDesktop))
+        # print("moveWindow", winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height)
         win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height, True)
+        # self.move(QPoint(winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top))
+        # self.resize(QSize(winpos.width, winpos.height))
+        # self.setGeometry(winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height)
+        # print("moveWindow ok", self.geometry())
         if not self.holdWindowPosition:
             self.windowPosition = self.calculateWindowPosition()
-            self.webUpdateAnchorStatus()
+            # self.webUpdateAnchorStatus()
+
+    # def resizeEvent(self, event):
+    #     super().resizeEvent(event)
+    #     qgeo = Rect(qrect=self.geometry())
+    #     wgeo = Rect(winapi_rect=win32gui.GetWindowRect(self.winId()))
+    #     print("resizeEvent", event.oldSize(), event.size(), qgeo, wgeo)
+    #     # if qgeo != wgeo:
+    #     #     rectparent = Rect(winapi_rect=win32gui.GetWindowRect(self.hParent)) if self.hParent else Rect(0,0,0,0)
+    #     #     print("resizeEvent win32gui.MoveWindow(%d,%d,%d,%d,%d,True)" % (self.winId(), qgeo.left-rectparent.left, qgeo.top-rectparent.top, qgeo.width, qgeo.height))
+    #     #     win32gui.MoveWindow(self.winId(), qgeo.left-rectparent.left, qgeo.top-rectparent.top, qgeo.width, qgeo.height, True)
+
+    # def moveEvent(self, event):
+    #     super().moveEvent(event)
+    #     qgeo = Rect(qrect=self.geometry())
+    #     wgeo = Rect(winapi_rect=win32gui.GetWindowRect(self.winId()))
+    #     print("moveEvent", event.oldPos(), event.pos(), qgeo, wgeo)
+    #     # if qgeo != wgeo:
+    #     #     rectparent = Rect(winapi_rect=win32gui.GetWindowRect(self.hParent)) if self.hParent else Rect(0,0,0,0)
+    #     #     print("resizeEvent win32gui.MoveWindow(%d,%d,%d,%d,%d,True)" % (self.winId(), qgeo.left-rectparent.left, qgeo.top-rectparent.top, qgeo.width, qgeo.height))
+    #     #     win32gui.MoveWindow(self.winId(), qgeo.left-rectparent.left, qgeo.top-rectparent.top, qgeo.width, qgeo.height, True)
 
     def show(self):
         super().show()
+        print("show")
         hDesktop = findDesktopIconWnd()
         win32gui.SetParent(self.winId(), hDesktop)
+        self.hParent = hDesktop
+        print("window parent set ok")
         lWinStyle = win32gui.GetWindowLong(self.winId(), win32con.GWL_STYLE)
         lWinStyle = lWinStyle & (~win32con.WS_CAPTION)
         lWinStyle = lWinStyle & (~win32con.WS_SYSMENU)
@@ -212,8 +248,20 @@ class DesktopWidget(QWidget):
         lWinStyle = lWinStyle & (~win32con.WS_SIZEBOX)
         win32gui.SetWindowLong(self.winId(), win32con.GWL_STYLE, lWinStyle)
         self.moveWindow(self.windowPosition)
+        print(Rect(winapi_rect=win32gui.GetWindowRect(hDesktop)), Rect(winapi_rect=win32gui.GetWindowRect(self.winId())), Rect(qrect=self.geometry()))
         print(hDesktop, self.winId())
-        self.webUpdateAnchorStatus()
+        # self.webUpdateAnchorStatus()
+        import time, threading
+        def fn_thread(self, hDesktop):
+            import time
+            time.sleep(1)
+            # print("setGeometry(%d, %d, %d, %d)" % (self.geometry().x() + 1, self.geometry().y() + 1, self.geometry().width(), self.geometry().height()))
+            # self.setGeometry(self.geometry().x() + 1, self.geometry().y() + 1, self.geometry().width(), self.geometry().height())
+            self.moveWindow(self.windowPosition)
+            print(Rect(winapi_rect=win32gui.GetWindowRect(hDesktop)), Rect(winapi_rect=win32gui.GetWindowRect(self.winId())), Rect(qrect=self.geometry()))
+        th = threading.Thread(target=fn_thread, args=(self,hDesktop))
+        th.setDaemon(True)
+        th.start()
 
     def onTrayActionClose(self):
         self.close()
@@ -227,7 +275,8 @@ class DesktopWidget(QWidget):
         def __init__(self, parent=None):
             super().__init__(parent)
             self.setContextMenuPolicy(Qt.NoContextMenu)
-            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setWindowFlags(Qt.FramelessWindowHint)
             self.setStyleSheet("background:transparent")
             self.settings().setAttribute(QWebEngineSettings.ShowScrollBars, False)
         def contextMenuEvent(self, event):

@@ -32,12 +32,17 @@ class Point:
         return Point(other / self.x, other / self.y)
 
 class Rect:
-    def __init__(self, left=0, top=0, right=0, bottom=0, winapi_rect=None):
+    def __init__(self, left=0, top=0, right=0, bottom=0, winapi_rect=None, qrect=None):
         if winapi_rect:
             self.left = winapi_rect[0]
             self.top = winapi_rect[1]
             self.right = winapi_rect[2]
             self.bottom = winapi_rect[3]
+        elif qrect:
+            self.left = qrect.left()
+            self.right = qrect.right() + 1
+            self.top = qrect.top()
+            self.bottom = qrect.bottom() + 1
         else:
             self.left = left
             self.top = top
@@ -46,7 +51,13 @@ class Rect:
     def copy(self):
         return Rect(left=self.left, top=self.top, right=self.right, bottom=self.bottom)
     def __str__(self):
-        return "Rect(%d,%d,%d,%d)" % (self.left, self.right, self.top, self.bottom)
+        return "Rect(%d,%d,%d,%d)" % (self.left, self.top, self.right, self.bottom)
+    def __eq__(self, other):
+        if self.left != other.left: return False
+        if self.top != other.top: return False
+        if self.right != other.right: return False
+        if self.bottom != other.bottom: return False
+        return True
     # getter of computable properties
     @property
     def width(self):
