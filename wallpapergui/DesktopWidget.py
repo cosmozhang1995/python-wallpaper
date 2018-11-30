@@ -30,6 +30,7 @@ def findDesktopIconWnd():
     results = []
     win32gui.EnumWindows(EnumWindowsCallback, results)
     return results[0] if len(results) > 0 else None
+    # return 0x10010 # this is the root
 
 class MonitorInfo:
     def __init__(self, winapi_monitorinfo):
@@ -133,13 +134,11 @@ class DesktopWidget(QWidget):
         self.web.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.web.setStyleSheet("background:transparent")
         self.web.page().setWebChannel(self.webchan)
+        # self.web.page().setBackgroundColor(QColor(255,255,255,0))
         self.web.page().setBackgroundColor(Qt.transparent)
         self.web.load(QUrl.fromLocalFile(os.path.join(system.execpath, "wallpapergui", "www", "DesktopWidget.html")))
         # self.web.page().mainFrame().setScrollBarPolicy(QtCore.Qt.Vertical, QtCore.Qt.ScrollBarAlwaysOff);
         self.layout.addWidget(self.web)
-        # self.text = QLabel("hello")
-        # self.text.setStyleSheet("color: white; font-size: 18px; padding: 10px;")
-        # self.layout.addWidget(self.text)
         self.setLayout(self.layout)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(True)
@@ -203,43 +202,16 @@ class DesktopWidget(QWidget):
     def moveWindow(self, winpos):
         hDesktop = findDesktopIconWnd()
         rectDesktop = Rect(winapi_rect=win32gui.GetWindowRect(hDesktop))
-        # print("moveWindow", winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height)
         win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height, True)
-        # self.move(QPoint(winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top))
-        # self.resize(QSize(winpos.width, winpos.height))
-        # self.setGeometry(winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height)
-        # print("moveWindow ok", self.geometry())
         if not self.holdWindowPosition:
             self.windowPosition = self.calculateWindowPosition()
-            # self.webUpdateAnchorStatus()
-
-    # def resizeEvent(self, event):
-    #     super().resizeEvent(event)
-    #     qgeo = Rect(qrect=self.geometry())
-    #     wgeo = Rect(winapi_rect=win32gui.GetWindowRect(self.winId()))
-    #     print("resizeEvent", event.oldSize(), event.size(), qgeo, wgeo)
-    #     # if qgeo != wgeo:
-    #     #     rectparent = Rect(winapi_rect=win32gui.GetWindowRect(self.hParent)) if self.hParent else Rect(0,0,0,0)
-    #     #     print("resizeEvent win32gui.MoveWindow(%d,%d,%d,%d,%d,True)" % (self.winId(), qgeo.left-rectparent.left, qgeo.top-rectparent.top, qgeo.width, qgeo.height))
-    #     #     win32gui.MoveWindow(self.winId(), qgeo.left-rectparent.left, qgeo.top-rectparent.top, qgeo.width, qgeo.height, True)
-
-    # def moveEvent(self, event):
-    #     super().moveEvent(event)
-    #     qgeo = Rect(qrect=self.geometry())
-    #     wgeo = Rect(winapi_rect=win32gui.GetWindowRect(self.winId()))
-    #     print("moveEvent", event.oldPos(), event.pos(), qgeo, wgeo)
-    #     # if qgeo != wgeo:
-    #     #     rectparent = Rect(winapi_rect=win32gui.GetWindowRect(self.hParent)) if self.hParent else Rect(0,0,0,0)
-    #     #     print("resizeEvent win32gui.MoveWindow(%d,%d,%d,%d,%d,True)" % (self.winId(), qgeo.left-rectparent.left, qgeo.top-rectparent.top, qgeo.width, qgeo.height))
-    #     #     win32gui.MoveWindow(self.winId(), qgeo.left-rectparent.left, qgeo.top-rectparent.top, qgeo.width, qgeo.height, True)
+            self.webUpdateAnchorStatus()
 
     def show(self):
         super().show()
-        print("show")
         hDesktop = findDesktopIconWnd()
         win32gui.SetParent(self.winId(), hDesktop)
         self.hParent = hDesktop
-        print("window parent set ok")
         lWinStyle = win32gui.GetWindowLong(self.winId(), win32con.GWL_STYLE)
         lWinStyle = lWinStyle & (~win32con.WS_CAPTION)
         lWinStyle = lWinStyle & (~win32con.WS_SYSMENU)
@@ -248,20 +220,8 @@ class DesktopWidget(QWidget):
         lWinStyle = lWinStyle & (~win32con.WS_SIZEBOX)
         win32gui.SetWindowLong(self.winId(), win32con.GWL_STYLE, lWinStyle)
         self.moveWindow(self.windowPosition)
-        print(Rect(winapi_rect=win32gui.GetWindowRect(hDesktop)), Rect(winapi_rect=win32gui.GetWindowRect(self.winId())), Rect(qrect=self.geometry()))
         print(hDesktop, self.winId())
-        # self.webUpdateAnchorStatus()
-        import time, threading
-        def fn_thread(self, hDesktop):
-            import time
-            time.sleep(1)
-            # print("setGeometry(%d, %d, %d, %d)" % (self.geometry().x() + 1, self.geometry().y() + 1, self.geometry().width(), self.geometry().height()))
-            # self.setGeometry(self.geometry().x() + 1, self.geometry().y() + 1, self.geometry().width(), self.geometry().height())
-            self.moveWindow(self.windowPosition)
-            print(Rect(winapi_rect=win32gui.GetWindowRect(hDesktop)), Rect(winapi_rect=win32gui.GetWindowRect(self.winId())), Rect(qrect=self.geometry()))
-        th = threading.Thread(target=fn_thread, args=(self,hDesktop))
-        th.setDaemon(True)
-        th.start()
+        self.webUpdateAnchorStatus()
 
     def onTrayActionClose(self):
         self.close()
