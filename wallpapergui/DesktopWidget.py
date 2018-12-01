@@ -141,8 +141,9 @@ class DesktopWidget(QWidget):
         self.layout.addWidget(self.web)
         self.setLayout(self.layout)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setAutoFillBackground(True)
-        self.setWindowFlags(Qt.FramelessWindowHint)
+        # self.setAutoFillBackground(True)
+        # self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | Qt.Tool)
+        self.installEventFilter(self)
         # # build system tray menu
         # self.systemTray = QSystemTrayIcon(self)
         # self.systemTray.setIcon(QIcon("images/bing.png"))
@@ -202,7 +203,8 @@ class DesktopWidget(QWidget):
     def moveWindow(self, winpos):
         hDesktop = findDesktopIconWnd()
         rectDesktop = Rect(winapi_rect=win32gui.GetWindowRect(hDesktop))
-        win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height, True)
+        # win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height, True)
+        win32gui.MoveWindow(self.winId(), winpos.left, winpos.top, winpos.width, winpos.height, True)
         if not self.holdWindowPosition:
             self.windowPosition = self.calculateWindowPosition()
             self.webUpdateAnchorStatus()
@@ -210,18 +212,42 @@ class DesktopWidget(QWidget):
     def show(self):
         super().show()
         hDesktop = findDesktopIconWnd()
-        win32gui.SetParent(self.winId(), hDesktop)
-        self.hParent = hDesktop
+        # win32gui.SetParent(self.winId(), hDesktop)
+        # self.hParent = hDesktop
         lWinStyle = win32gui.GetWindowLong(self.winId(), win32con.GWL_STYLE)
         lWinStyle = lWinStyle & (~win32con.WS_CAPTION)
         lWinStyle = lWinStyle & (~win32con.WS_SYSMENU)
         lWinStyle = lWinStyle & (~win32con.WS_MAXIMIZEBOX)
         lWinStyle = lWinStyle & (~win32con.WS_MINIMIZEBOX)
         lWinStyle = lWinStyle & (~win32con.WS_SIZEBOX)
+        lWinStyle = lWinStyle & (~win32con.WS_CLIPSIBLINGS)
+        # lWinStyle = lWinStyle & (~win32con.WS_EX_TOOLWINDOW)
         win32gui.SetWindowLong(self.winId(), win32con.GWL_STYLE, lWinStyle)
+        win32gui.SetWindowPos(self.winId(), win32con.HWND_BOTTOM, 0, 0, 0, 0, win32con.SWP_NOSIZE | win32con.SWP_NOMOVE)
         self.moveWindow(self.windowPosition)
         print(hDesktop, self.winId())
         self.webUpdateAnchorStatus()
+
+    def focusInEvent(self, event):
+        super().focusInEvent()
+        print("focusInEvent")
+
+    def eventFilter(self, watched, event):
+        if watched == self:
+            eventType = event.type()
+            if eventType == QEvent.Type.WindowActivate:
+                win32gui.SetWindowPos(self.winId(), win32con.HWND_BOTTOM, 0, 0, 0, 0, win32con.SWP_NOSIZE | win32con.SWP_NOMOVE)
+            elif eventType == QEvent.Type.WindowStateChange:
+                print("eventFilter", "WindowStateChange", int(self.windowState()))
+            # elif eventType == QEvent.Type.WindowDeactivate:
+            #     print("eventFilter", "WindowDeactivate", int(self.windowState()))
+            #     if self.windowState == Qt.WindowMinimized:
+            #         print("WindowMinimized")
+        return super().eventFilter(watched, event)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        print("changeEvent", event, int(self.windowState()))
 
     def onTrayActionClose(self):
         self.close()
@@ -321,7 +347,7 @@ class DesktopWidget(QWidget):
         self.web.page().runJavaScript("%s(%s);" % (callback, ("true" if (self.windowPosition.anchor & WindowPosition.ANCHOR_TOP) else "false")))
 
     def webUpdateAnchorStatus(self):
-        print("webUpdateAnchorStatus", self.windowPosition.x, self.windowPosition.y, self.windowPosition.anchor & WindowPosition.ANCHOR_TOP)
+        # print("webUpdateAnchorStatus", self.windowPosition.x, self.windowPosition.y, self.windowPosition.anchor & WindowPosition.ANCHOR_TOP)
         self.web.page().runJavaScript("window.widget_anchor_top = %s;" % ("true" if (self.windowPosition.anchor & WindowPosition.ANCHOR_TOP) else "false"))
 
     def changeWallpaper(self):
