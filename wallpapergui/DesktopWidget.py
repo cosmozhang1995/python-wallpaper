@@ -122,23 +122,16 @@ class DesktopWidget(QQuickWidget):
         if self.windowPosition is None:
             monitor = MonitorInfo.get(primary=True)
             self.windowPosition = WindowPosition(monitor=monitor, x=0, y=0, width=0, height=0, anchor=WindowPosition.ANCHOR_LEFT|WindowPosition.ANCHOR_TOP)
+        # set as frameless transparent window
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # self.setAttribute(Qt.WidgetAttribute.WA_AlwaysStackOnTop, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+        self.setClearColor(Qt.transparent)
+        # self.setAutoFillBackground(True)
+        # self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
         # load qml source
         qmlsrc = QUrl.fromLocalFile(os.path.join(os.path.dirname(system.abspath(__file__)), "qml", "DesktopWidget.qml"))
         self.setSource(qmlsrc)
-        # set as frameless transparent window
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setClearColor(Qt.transparent)
-        # self.layout = QVBoxLayout()
-        # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        # self.setAutoFillBackground(True)
-        # self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
-        # self.quick = QQuickWidget(self)
-        # self.quick.setSource(qmlsrc)
-        # self.quick.setAttribute(Qt.WA_AlwaysStackOnTop)
-        # self.quick.setClearColor(Qt.transparent)
-        # self.layout.addWidget(self.quick)
-        # self.text = QLabel("Hello World")
-        # self.layout.addWidget(self.text)
         # # build system tray menu
         # self.systemTray = QSystemTrayIcon(self)
         # self.systemTray.setIcon(QIcon("images/bing.png"))
@@ -199,7 +192,6 @@ class DesktopWidget(QQuickWidget):
         hDesktop = findDesktopIconWnd()
         rectDesktop = Rect(winapi_rect=win32gui.GetWindowRect(hDesktop))
         # win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height, True)
-        print("%d + %d - %d, %d + %d - %d" % (winpos.left, winpos.monitor.work.left, rectDesktop.left, winpos.top, winpos.monitor.work.top, rectDesktop.top))
         win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, self.width(), self.height(), True)
         if not self.holdWindowPosition:
             self.windowPosition = self.calculateWindowPosition()
@@ -217,16 +209,7 @@ class DesktopWidget(QQuickWidget):
         lWinStyle = lWinStyle & (~win32con.WS_SIZEBOX)
         win32gui.SetWindowLong(self.winId(), win32con.GWL_STYLE, lWinStyle)
         self.moveWindow(self.windowPosition)
-        # win32gui.MoveWindow(self.winId(), 0, 0, 100, 100, True)
         print(hDesktop, self.winId())
-        # def thfn(self, winpos):
-        #     import time
-        #     time.sleep(1)
-        #     self.moveWindow(winpos)
-        # import threading
-        # th = threading.Thread(target=thfn, args=(self, self.windowPosition) )
-        # th.setDaemon(True)
-        # th.start()
 
     def onTrayActionClose(self):
         self.close()
@@ -236,17 +219,16 @@ class DesktopWidget(QQuickWidget):
         self.web.reload()
         self.web.page().setWebChannel(self.webchan)
 
-    def onDebug(self, operation):
-        eval(operation)
-    def onResizeWindow(self, w, h):
-        winpos = self.windowPosition.copy()
-        winpos.width = w
-        winpos.height = h
-        self.moveWindow(winpos)
+    # def onResizeWindow(self, w, h):
+    #     winpos = self.windowPosition.copy()
+    #     winpos.width = w
+    #     winpos.height = h
+    #     self.moveWindow(winpos)
 
     def mousePressEvent(self, event):
         self.mousePressPos = Point(qpoint=event.globalPos())
         self.mousePressWindowPos = self.windowPosition
+        super().mousePressEvent(event)
     def mouseMoveEvent(self, event):
         if self.mousePressPos:
             pos = Point(qpoint=event.globalPos())
@@ -256,6 +238,7 @@ class DesktopWidget(QQuickWidget):
             winpos.x += dx
             winpos.y += dy
             self.moveWindow(winpos)
+        super().mouseMoveEvent(event)
     def mouseReleaseEvent(self, event):
         if self.mousePressPos:
             pos = Point(qpoint=event.globalPos())
@@ -268,6 +251,7 @@ class DesktopWidget(QQuickWidget):
             self.mousePressWindowPos = None
             self.mousePressPos = None
             self.saveWindowPosition(self.windowPosition)
+        super().mouseReleaseEvent(event)
 
     def onHoldWindowPosition(self, holding):
         self.holdWindowPosition = holding
@@ -279,7 +263,6 @@ class DesktopWidget(QQuickWidget):
         def callback():
             self.imageitem = self.manager.next()
             set_wallpaper(self.imageitem.imagepath)
-            print("here we set wallpaper")
         self.manager.update(callback)
 
 
