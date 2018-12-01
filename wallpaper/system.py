@@ -13,6 +13,12 @@ class SystemInfo:
             return os.path.realpath(os.path.dirname(sys.executable))
         else :
             return os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
+    def abspath(self, relpath):
+        if getattr( sys, 'frozen', False ) :
+            return os.path.realpath(os.path.join(os.path.dirname(sys.executable), relpath))
+        else:
+            return os.path.realpath(relpath)
+
     
 
 system = SystemInfo()

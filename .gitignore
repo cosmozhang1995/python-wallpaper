@@ -8,4 +8,4 @@ __pycache__
 /*.spec
 /path
 
-node_modules
+*.qmlc

@@ -1,7 +1,11 @@
 class Point:
-    def __init__(self, x=0, y=0):
-        self.x = x
-        self.y = y
+    def __init__(self, x=0, y=0, qpoint=None):
+        if qpoint:
+            self.x = qpoint.x()
+            self.y = qpoint.y()
+        else:
+            self.x = x
+            self.y = y
     def copy(self):
         return Point(x=self.x, y=self.y)
     def __str__(self):
