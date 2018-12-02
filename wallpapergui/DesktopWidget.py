@@ -2,7 +2,9 @@ import sys,os
 
 from PySide2.QtCore import Qt, QObject, Signal, Slot, QPoint, QSize, QUrl, QEvent
 from PySide2.QtWidgets import QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QAction
-from PySide2.QtGui import QPainter, QColor, QIcon
+from PySide2.QtGui import QPainter, QColor, QIcon, QMouseEvent
+from PySide2.QtQml import QQmlProperty
+from PySide2.QtQuick import QQuickItem
 from PySide2.QtQuickWidgets import QQuickWidget
 
 import requests
@@ -132,6 +134,7 @@ class DesktopWidget(QQuickWidget):
         # load qml source
         qmlsrc = QUrl.fromLocalFile(os.path.join(os.path.dirname(system.abspath(__file__)), "qml", "DesktopWidget.qml"))
         self.setSource(qmlsrc)
+        self.rootContext().setContextProperty("target", self)
         # # build system tray menu
         # self.systemTray = QSystemTrayIcon(self)
         # self.systemTray.setIcon(QIcon("images/bing.png"))
@@ -225,11 +228,17 @@ class DesktopWidget(QQuickWidget):
     #     winpos.height = h
     #     self.moveWindow(winpos)
 
+    @Slot(int, int, result=None)
+    def test(self, x, y):
+        print("test", x, y)
+
     def mousePressEvent(self, event):
-        self.mousePressPos = Point(qpoint=event.globalPos())
-        self.mousePressWindowPos = self.windowPosition
         super().mousePressEvent(event)
+        if QQmlProperty.read(self.rootObject(), "dragging"):
+            self.mousePressPos = Point(qpoint=event.globalPos())
+            self.mousePressWindowPos = self.windowPosition
     def mouseMoveEvent(self, event):
+        super().mouseMoveEvent(event)
         if self.mousePressPos:
             pos = Point(qpoint=event.globalPos())
             dx = pos.x - self.mousePressPos.x
@@ -238,8 +247,8 @@ class DesktopWidget(QQuickWidget):
             winpos.x += dx
             winpos.y += dy
             self.moveWindow(winpos)
-        super().mouseMoveEvent(event)
     def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
         if self.mousePressPos:
             pos = Point(qpoint=event.globalPos())
             dx = pos.x - self.mousePressPos.x
@@ -251,7 +260,6 @@ class DesktopWidget(QQuickWidget):
             self.mousePressWindowPos = None
             self.mousePressPos = None
             self.saveWindowPosition(self.windowPosition)
-        super().mouseReleaseEvent(event)
 
     def onHoldWindowPosition(self, holding):
         self.holdWindowPosition = holding

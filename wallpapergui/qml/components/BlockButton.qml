@@ -3,15 +3,17 @@ import QtQuick.Controls 2.4
 
 Label {
   id: label
-  property alias text: label.text
-  property alias font: label.font
+  property int hpadding: 15
+  property alias mousearea: rect_ma
   color: "white"
   text: ""
   font.family: "\"Segoe UI\", Arial"
   font.pixelSize: 18
-  leftPadding: 10
-  rightPadding: 10
-  lineHeight: 40
+  leftPadding: this.hpadding
+  rightPadding: this.hpadding
+  // anchors.top: parent.top
+  // anchors.bottom: parent.bottom
+  lineHeight: this.height
   lineHeightMode: Text.FixedHeight
   verticalAlignment: Text.AlignVCenter
   background: Rectangle {

@@ -17,4 +17,3 @@ class Application(QApplication):
             if suffix in ["ttf"]:
                 filepath = os.path.join(fontdir, filename)
                 fontId = QFontDatabase.addApplicationFont(filepath)
-                print(QFontDatabase.applicationFontFamilies(fontId))
