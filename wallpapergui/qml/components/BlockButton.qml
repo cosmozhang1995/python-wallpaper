@@ -8,14 +8,18 @@ Item {
   property alias text: cardtext.text
   property alias font: cardtext.font
   property alias label: cardtext
-  property alias mousearea: cardbg.mousearea
+  property alias mousearea: cardma
   CardBackground {
     id: cardbg
     anchors.fill: parent
+    mousearea: cardma
   }
   CardText {
     id: cardtext
     text: "Hello World"
     anchors.verticalCenter: parent.verticalCenter
+  }
+  CardMouseArea {
+    id: cardma
   }
 }

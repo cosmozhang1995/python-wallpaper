@@ -132,6 +132,7 @@ class DesktopWidget(QWidget):
         self.quick.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.quick.setClearColor(Qt.transparent)
         self.layout = QVBoxLayout()
+        self.layout.setSpacing(0)
         self.layout.addWidget(self.quick)
         self.setLayout(self.layout)
         # self.setAutoFillBackground(True)
@@ -199,6 +200,7 @@ class DesktopWidget(QWidget):
     def moveWindow(self, winpos):
         hDesktop = findDesktopIconWnd()
         rectDesktop = Rect(winapi_rect=win32gui.GetWindowRect(hDesktop))
+        # print("MoveWindow", self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height)
         win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height, True)
         if self.hParent and not self.holdWindowPosition:
             self.windowPosition = self.calculateWindowPosition()
@@ -261,9 +263,15 @@ class DesktopWidget(QWidget):
     def onResizeEvent(self, event):
         winpos = self.windowPosition.copy()
         # TODO: the size will change 2 times
-        winpos.width = event.size().width()
-        winpos.height = event.size().height()
-        self.moveWindow(winpos)
+        if not self.hParent:
+            # this is the initialization of windowPosition
+            winpos.width = self.width()
+            winpos.height = self.height()
+            self.windowPosition = winpos
+        else:
+            winpos.width += event.size().width() - event.oldSize().width()
+            winpos.height += event.size().height() - event.oldSize().height()
+            self.moveWindow(winpos)
 
     def onHoldWindowPosition(self, holding):
         self.holdWindowPosition = holding
