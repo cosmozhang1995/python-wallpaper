@@ -4,27 +4,38 @@ import QtQuick.Controls 2.4
 
 import "./components"
 
-ColumnLayout {
+Item {
   id: root
-  spacing: 5
+  width: rootlayout.width
+  height: rootlayout.height
   property bool dragging: title_button.mousearea.pressed
-  RowLayout {
-
+  property bool showbuttons: !this.dragging && (mousearea.containsMouse || rootlayout.containsMouse) // && !this.dragging
+  MouseArea {
+    id: mousearea
+    hoverEnabled: true
+    anchors.fill: rootlayout
   }
-  RowLayout {
+  ColumnLayout {
+    id: rootlayout
     spacing: 5
-    height: 40
-    BlockButton {
-      id: title_button
-      text: "Hello World"
-      Layout.minimumWidth: 200
-      Layout.maximumWidth: 300
-      Layout.fillHeight: true
+    property bool containsMouse: title_button.mousearea.containsMouse || fabutton.mousearea.containsMouse
+    RowLayout {
     }
-    FAButton {
-      text: "\uf1de"
-      Layout.fillHeight: true
-      Layout.preferredWidth: this.height
+    RowLayout {
+      spacing: 5
+      BlockButton {
+        id: title_button
+        text: "Hello World"
+        Layout.minimumWidth: 200
+        Layout.maximumWidth: 300
+      }
+      FAButton {
+        id: fabutton
+        visible: root.showbuttons
+        text: "\uf1de"
+        Layout.fillHeight: true
+      }
     }
   }
 }
+

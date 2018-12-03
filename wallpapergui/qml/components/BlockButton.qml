@@ -1,29 +1,21 @@
 import QtQuick 2.0
 import QtQuick.Controls 2.4
 
-Label {
-  id: label
-  property int hpadding: 15
-  property alias mousearea: rect_ma
-  color: "white"
-  text: ""
-  font.family: "\"Segoe UI\", Arial"
-  font.pixelSize: 18
-  leftPadding: this.hpadding
-  rightPadding: this.hpadding
-  // anchors.top: parent.top
-  // anchors.bottom: parent.bottom
-  lineHeight: this.height
-  lineHeightMode: Text.FixedHeight
-  verticalAlignment: Text.AlignVCenter
-  background: Rectangle {
-    id: rect
-    color: rect_ma.containsMouse ? "#d0000000" : "#b0000000"
-    MouseArea {
-      id: rect_ma
-      hoverEnabled: true
-      anchors.fill: parent
-      cursorShape: this.pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-    }
+Item {
+  id: root
+  height: 40
+  width: cardtext.width
+  property alias text: cardtext.text
+  property alias font: cardtext.font
+  property alias label: cardtext
+  property alias mousearea: cardbg.mousearea
+  CardBackground {
+    id: cardbg
+    anchors.fill: parent
+  }
+  CardText {
+    id: cardtext
+    text: "Hello World"
+    anchors.verticalCenter: parent.verticalCenter
   }
 }

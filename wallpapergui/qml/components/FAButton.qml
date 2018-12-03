@@ -5,6 +5,6 @@ BlockButton {
   id: root
   font.family: "Font Awesome 5 Free"
   width: this.height
-  hpadding: 0
-  horizontalAlignment: Qt.AlignHCenter
+  label.hpadding: 0
+  label.anchors.horizontalCenter: label.parent.horizontalCenter
 }
