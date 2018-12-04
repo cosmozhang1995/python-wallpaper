@@ -4,11 +4,12 @@ import QtQuick.Controls 2.4
 Item {
   id: root
   height: 40
-  width: cardtext.width
   property alias text: cardtext.text
   property alias font: cardtext.font
   property alias label: cardtext
   property alias mousearea: cardma
+  property alias cardtext: cardtext
+  property alias active: cardbg.active
   CardBackground {
     id: cardbg
     anchors.fill: parent
@@ -18,6 +19,8 @@ Item {
     id: cardtext
     text: "Hello World"
     anchors.verticalCenter: parent.verticalCenter
+    elide: Text.ElideRight
+    clip: true
   }
   CardMouseArea {
     id: cardma

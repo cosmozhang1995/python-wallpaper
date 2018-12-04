@@ -16,7 +16,7 @@ from wallpaper.system import system
 from wallpaper.manager.bing import BingManager
 
 from .geo import Rect, Point
-from .qmlsupports import MouseEvent
+from .qmlsupports import MouseEvent, package
 
 import win32con, win32gui, win32api
 def findDesktopIconWnd():
@@ -109,6 +109,7 @@ class DesktopWidget(QWidget):
         self.manager = BingManager()
         self.imageitem = None
         # mouse dragging properties
+        self.dragging = False
         self.mousePressPos = None
         self.mousePressWindowPos = QPoint(100,100)
         self.windowPosition = self.loadWindowPosition(None)
@@ -150,7 +151,7 @@ class DesktopWidget(QWidget):
         # self.systemTrayMenu = menu
         # self.systemTray.setContextMenu(self.systemTrayMenu)
 
-    def calculateWindowPosition(self):
+    def calculateWindowPosition(self, force_anchor=0):
         h = self.winId()
         rect = Rect(winapi_rect=win32gui.GetWindowRect(h))
         monitors = MonitorInfo.all()
@@ -162,19 +163,19 @@ class DesktopWidget(QWidget):
         else:
             monitor = self.windowPosition.monitor
         anchor = 0
-        if rect.hcenter < monitor.work.hcenter:
+        if rect.hcenter < monitor.work.hcenter or force_anchor & WindowPosition.ANCHOR_LEFT:
             anchor |= WindowPosition.ANCHOR_LEFT
             posx = rect.left
-        elif rect.hcenter > monitor.work.hcenter:
+        elif rect.hcenter > monitor.work.hcenter or force_anchor & WindowPosition.ANCHOR_RIGHT:
             anchor |= WindowPosition.ANCHOR_RIGHT
             posx = rect.right
         else:
             anchor |= WindowPosition.ANCHOR_HCENTER
             posx = rect.hcenter
-        if rect.vcenter < monitor.work.vcenter:
+        if rect.vcenter < monitor.work.vcenter or force_anchor & WindowPosition.ANCHOR_TOP:
             anchor |= WindowPosition.ANCHOR_TOP
             posy = rect.top
-        elif rect.vcenter > monitor.work.vcenter:
+        elif rect.vcenter > monitor.work.vcenter or force_anchor & WindowPosition.ANCHOR_BOTTOM:
             anchor |= WindowPosition.ANCHOR_BOTTOM
             posy = rect.bottom
         else:
@@ -216,22 +217,21 @@ class DesktopWidget(QWidget):
         self.web.reload()
         self.web.page().setWebChannel(self.webchan)
 
+    mouseEntered = Signal(QEvent)
+    mouseExited = Signal(QEvent)
     mouseMoved = Signal(QMouseEvent)
-    def mouseMoveEvent(self, event):
-        super().mouseMoveEvent(event)
-        self.mouseMoved.emit(event)
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.mouseEntered.emit(event)
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.mouseExited.emit(event)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
         if self.quick.dragging:
-            self.mousePressPos = Point(qpoint=event.globalPos())
-            self.mousePressWindowPos = self.calculateWindowPosition()
-            print(self.mousePressWindowPos.width, self.mousePressWindowPos.height)
-            from wallpaper.utils import setTimeout
-            def printPos():
-                winpos = self.calculateWindowPosition()
-                print(winpos.width, winpos.height)
-            setTimeout(printPos, 1)
+            self.dragging = True
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
         self.mouseMoved.emit(event)
@@ -240,14 +240,16 @@ class DesktopWidget(QWidget):
             dx = pos.x - self.mousePressPos.x
             dy = pos.y - self.mousePressPos.y
             winpos = self.mousePressWindowPos.copy()
-            calcwinpos = self.calculateWindowPosition()
-            print(calcwinpos.width, calcwinpos.height)
             winpos.x += dx
             winpos.y += dy
             self.moveWindow(winpos)
+        elif self.dragging:
+            self.mousePressPos = Point(qpoint=event.globalPos())
+            self.mousePressWindowPos = self.calculateWindowPosition(force_anchor=WindowPosition.ANCHOR_LEFT|WindowPosition.ANCHOR_TOP)
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
         if self.mousePressPos:
+            self.dragging = False
             pos = Point(qpoint=event.globalPos())
             dx = pos.x - self.mousePressPos.x
             dy = pos.y - self.mousePressPos.y
@@ -257,7 +259,7 @@ class DesktopWidget(QWidget):
             self.moveWindow(winpos)
             self.mousePressWindowPos = None
             self.mousePressPos = None
-            self.saveWindowPosition(self.windowPosition)
+            self.saveWindowPosition(self.calculateWindowPosition())
 
 
 
@@ -275,9 +277,6 @@ class DesktopWidget(QWidget):
 
     def onHoldWindowPosition(self, holding):
         self.holdWindowPosition = holding
-
-    def onRequestAnchorTopStatus(self, callback):
-        self.web.page().runJavaScript("%s(%s);" % (callback, ("true" if (self.windowPosition.anchor & WindowPosition.ANCHOR_TOP) else "false")))
 
     def changeWallpaper(self):
         def callback():
@@ -310,16 +309,16 @@ class DesktopWidget(QWidget):
         mousePressed = Signal(MouseEvent)
         mouseMoved = Signal(MouseEvent)
         mouseReleased = Signal(MouseEvent)
-        mouseEntered = Signal(MouseEvent)
-        mouseExited = Signal(MouseEvent)
+        mouseEntered = Signal()
+        mouseExited = Signal()
         def __init__(self, parent):
             super().__init__()
             self.parent = parent
+            self.title = "Hello World"
+            self.content = "Hello world I'm your content! Hello world I'm your content! Hello world I'm your content! Hello world I'm your content!"
+        # TODO: add properties title, content
 
     class QuickWidget(QQuickWidget):
-        # mousePressed = Signal(QMouseEvent)
-        # mouseMoved = Signal(QMouseEvent)
-        # mouseReleased = Signal(QMouseEvent)
         resized = Signal(QResizeEvent)
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -327,10 +326,9 @@ class DesktopWidget(QWidget):
             self.holder = DesktopWidget.QuickHolder(self)
             self._mouseEntered = False
             if parent:
-                # self.mousePressed.connect(parent.onMousePressEvent)
-                # self.mouseMoved.connect(parent.onMouseMoveEvent)
-                # self.mouseReleased.connect(parent.onMouseReleaseEvent)
                 self.resized.connect(parent.onResizeEvent)
+                parent.mouseEntered.connect(self.onParentMouseEntered)
+                parent.mouseExited.connect(self.onParentMouseExited)
                 parent.mouseMoved.connect(self.onParentMouseMoved)
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
             self.setClearColor(Qt.transparent)
@@ -342,28 +340,32 @@ class DesktopWidget(QWidget):
             self.setSource(qmlsrc)
         def mousePressEvent(self, event):
             super().mousePressEvent(event)
-            # self.mousePressed.emit(event)
             self.holder.mousePressed.emit(MouseEvent(qmouseevent=event))
             event.ignore()
         def mouseMoveEvent(self, event):
             super().mouseMoveEvent(event)
-            # self.mouseMoved.emit(event)
             self.holder.mouseMoved.emit(MouseEvent(qmouseevent=event))
             event.ignore()
         def mouseReleaseEvent(self, event):
             super().mouseReleaseEvent(event)
-            # self.mouseReleased.emit(event)
             self.holder.mouseReleased.emit(MouseEvent(qmouseevent=event))
             event.ignore()
+        def onParentMouseEntered(self, event):
+            pass
+        def onParentMouseExited(self, event):
+            self._mouseEntered = False
+            self.holder.mouseExited.emit()
         def onParentMouseMoved(self, event):
             if Rect(qrect=self.geometry()).has(Point(qpoint=event.pos())):
                 if not self._mouseEntered:
                     self._mouseEntered = True
-                    self.holder.mouseEntered.emit(MouseEvent(qmouseevent=event, widget=self))
+                    # self.holder.mouseEntered.emit(MouseEvent(qmouseevent=event, widget=self))
+                    self.holder.mouseEntered.emit()
             else:
                 if self._mouseEntered:
                     self._mouseEntered = False
-                    self.holder.mouseExited.emit(MouseEvent(qmouseevent=event, widget=self))
+                    # self.holder.mouseExited.emit(MouseEvent(qmouseevent=event, widget=self))
+                    self.holder.mouseExited.emit()
         def resizeEvent(self, event):
             super().resizeEvent(event)
             self.resized.emit(event)
