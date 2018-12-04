@@ -34,6 +34,9 @@ class Point:
         return Point(self.x / other, self.y / other)
     def __rtruediv__(self, other):
         return Point(other / self.x, other / self.y)
+    # calculate if point in the rect
+    def within(self, rect):
+        return isPointInRect(self, rect)
 
 class Rect:
     def __init__(self, left=0, top=0, right=0, bottom=0, winapi_rect=None, qrect=None):
@@ -146,5 +149,12 @@ class Rect:
         return Rect.overlap(self, other)
     def __rand__(self, other):
         return Rect.overlap(self, other)
+    # calculate if point in the rect
+    def has(self, point):
+        return isPointInRect(point, self)
+
+def isPointInRect(point, rect):
+    return point.x >= rect.left and point.x < rect.right and point.y >= rect.top and point.y < rect.bottom
+
 
     

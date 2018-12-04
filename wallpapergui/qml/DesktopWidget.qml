@@ -10,9 +10,6 @@ Item {
   height: rootlayout.height + 10
   property bool dragging: title_button.mousearea.pressed
   property bool showbuttons: !this.dragging && (mousearea.containsMouse || rootlayout.hover) // && !this.dragging
-  signal mouseEntered()
-  signal mouseMoved()
-  signal mouseExited()
   MouseArea {
     id: mousearea
     hoverEnabled: true
@@ -21,7 +18,7 @@ Item {
   ColumnLayout {
     id: rootlayout
     spacing: 5
-    property bool hover: title_button.mousearea.containsMouse || fabutton.mousearea.containsMouse
+    property bool hover: false
     anchors.left: parent.left
     anchors.top: parent.top
     anchors.margins: 5
@@ -33,6 +30,31 @@ Item {
         onEntered: { rootlayout.hover = true; detectShownButtons(); }
         onExited: { rootlayout.hover = false; detectShownButtons(); }
       }
+    }
+    property bool _entered: false
+    signal entered()
+    signal exited()
+    Connections {
+      target: holder
+      onMouseMoved: function(event) {
+        if (event.x >= rootlayout.x && event.x < rootlayout.x + rootlayout.width &&
+            event.y >= rootlayout.y && event.y < rootlayout.y + rootlayout.height) {
+          if (!rootlayout._entered) {
+            rootlayout._entered = true;
+            rootlayout.entered();
+          }
+        } else {
+          if (rootlayout._entered) {
+            rootlayout._entered = false;
+            rootlayout.exited();
+          }
+        }
+      }
+    }
+    Connections {
+      target: rootlayout
+      onEntered: { rootlayout.hover = true; }
+      onExited: { rootlayout.hover = false; }
     }
     RowLayout {
     }
@@ -47,7 +69,7 @@ Item {
       }
       FAButton {
         id: fabutton
-        visible: false
+        visible: root.showbuttons
         text: "\uf1de"
         Layout.fillHeight: true
         // Loader { sourceComponent: connectionBlockButton }
