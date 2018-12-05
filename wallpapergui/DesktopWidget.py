@@ -1,17 +1,19 @@
 import sys,os
 
-from PySide2.QtCore import Qt, QObject, Signal, Slot, QPoint, QSize, QUrl, QEvent
+from PySide2.QtCore import Qt, QObject, Signal, Slot, QPoint, QSize, QUrl, QEvent, Property, QTimer
 from PySide2.QtWidgets import QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QAction
 from PySide2.QtGui import QPainter, QColor, QIcon, QMouseEvent, QResizeEvent
 from PySide2.QtQml import QQmlProperty, QQmlEngine
 from PySide2.QtQuick import QQuickItem
 from PySide2.QtQuickWidgets import QQuickWidget
+from PySide2.QtQml import qmlRegisterType
 
 import requests
 import json
+import datetime
 
 from wallpaper.wallpaper import set_wallpaper
-from wallpaper.image import ImageItem
+from wallpaper.userconfig import UserConfig
 from wallpaper.system import system
 from wallpaper.manager.bing import BingManager
 
@@ -106,8 +108,14 @@ class DesktopWidget(QWidget):
         super().__init__()
         self.hParent = 0
         # properties
+        self.userconfig = UserConfig()
         self.manager = BingManager()
-        self.imageitem = None
+        self.wallpaperitem = None
+        self.timer = QTimer()
+        self.timer.setInterval(1000)
+        self.timer.setSingleShot(False)
+        self.timer.timeout.connect(self.onTimerTimeout)
+        self.timerClear = True
         # mouse dragging properties
         self.dragging = False
         self.mousePressPos = None
@@ -130,26 +138,22 @@ class DesktopWidget(QWidget):
         # self.setAutoFillBackground(True)
         # self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
         self.quick.load()
-        # # build system tray menu
-        # self.systemTray = QSystemTrayIcon(self)
-        # self.systemTray.setIcon(QIcon("images/bing.png"))
-        # self.systemTray.setToolTip("Bing Wallpaper")
-        # self.systemTray.show()
-        # menu = QMenu(self)
-        # action_change = QAction(menu)
-        # action_change.setText("Change Wallpaper")
-        # action_change.triggered.connect(self.onTrayActionChange)
-        # menu.addAction(action_change)
-        # action_reload = QAction(menu)
-        # action_reload.setText("Reload")
-        # action_reload.triggered.connect(self.onTrayActionReload)
-        # menu.addAction(action_reload)
-        # action_close = QAction(menu)
-        # action_close.setText("Close")
-        # action_close.triggered.connect(self.onTrayActionClose)
-        # menu.addAction(action_close)
-        # self.systemTrayMenu = menu
-        # self.systemTray.setContextMenu(self.systemTrayMenu)
+        # build system tray menu
+        self.systemTray = QSystemTrayIcon(self)
+        self.systemTray.setIcon(QIcon("images/bing.png"))
+        self.systemTray.setToolTip("Bing Wallpaper")
+        self.systemTray.show()
+        menu = QMenu(self)
+        action_change = QAction(menu)
+        action_change.setText("Change Wallpaper")
+        action_change.triggered.connect(self.onTrayActionChange)
+        menu.addAction(action_change)
+        action_close = QAction(menu)
+        action_close.setText("Close")
+        action_close.triggered.connect(self.onTrayActionClose)
+        menu.addAction(action_close)
+        self.systemTrayMenu = menu
+        self.systemTray.setContextMenu(self.systemTrayMenu)
 
     def calculateWindowPosition(self, force_anchor=0):
         h = self.winId()
@@ -208,6 +212,7 @@ class DesktopWidget(QWidget):
         win32gui.SetWindowLong(self.winId(), win32con.GWL_STYLE, lWinStyle)
         self.moveWindow(self.windowPosition)
         print(hDesktop, self.winId())
+        self.timer.start()
 
     def onTrayActionClose(self):
         self.close()
@@ -271,18 +276,47 @@ class DesktopWidget(QWidget):
             winpos.height = self.height()
             self.windowPosition = winpos
         else:
+            print(winpos.width, winpos.height)
             winpos.width += event.size().width() - event.oldSize().width()
             winpos.height += event.size().height() - event.oldSize().height()
+            print(winpos.width, winpos.height)
             self.moveWindow(winpos)
 
     def onHoldWindowPosition(self, holding):
         self.holdWindowPosition = holding
 
-    def changeWallpaper(self):
-        def callback():
-            self.imageitem = self.manager.next()
-            set_wallpaper(self.imageitem.imagepath)
-        self.manager.update(callback)
+    def setupTimer(self):
+        if self.manager.status.updatetime is None:
+            self.changeWallpaper()
+        else:
+            dt = datetime.datetime.now() - self.manager.status.updatetime
+            if dt > datetime.timedelta(0):
+                self.timer.stop()
+                self.timer.start(dt.seconds*1000)
+            else:
+                self.changeWallpaper()
+
+    def changeWallpaper(self, with_update=True):
+        wallpaperitem = self.manager.random()
+        if wallpaperitem is None:
+            self.manager.update(lambda: self.changeWallpaper(with_update=False))
+        else:
+            set_wallpaper(wallpaperitem.imagepath)
+            self.quick.holder.wallpaperInfo = wallpaperitem.info
+            if with_update:
+                self.manager.update()
+            self.timerClear = True
+
+    @Slot()
+    def onTimerTimeout(self):
+        print("DesktopWidget", self.width(), self.height())
+        if not self.timerClear: return
+        if self.manager.status.updatetime is None:
+            self.changeWallpaper()
+        else:
+            dt = datetime.datetime.now() - self.manager.status.updatetime
+            if dt > datetime.timedelta(seconds=self.userconfig.interval):
+                self.changeWallpaper()
 
 
     def saveWindowPosition(self, pos):
@@ -305,22 +339,52 @@ class DesktopWidget(QWidget):
         else:
             return default
 
+    wallpaperChanged = Signal()
+
+    @Slot()
+    def onButtonSettings(self):
+        pass
+    @Slot()
+    def onButtonRefresh(self):
+        self.changeWallpaper()
+
     class QuickHolder(QObject):
         mousePressed = Signal(MouseEvent)
         mouseMoved = Signal(MouseEvent)
         mouseReleased = Signal(MouseEvent)
         mouseEntered = Signal()
         mouseExited = Signal()
+        buttonSettingsClicked = Signal()
+        buttonRefreshClicked = Signal()
         def __init__(self, parent):
             super().__init__()
             self.parent = parent
-            self.title = "Hello World"
-            self.content = "Hello world I'm your content! Hello world I'm your content! Hello world I'm your content! Hello world I'm your content!"
-        # TODO: add properties title, content
+            self._wallpaperInfo = None
+        defaultPropertyChanged = Signal()
+        @property
+        def wallpaperInfo(self):
+            return self._wallpaperInfo
+        @wallpaperInfo.setter
+        def wallpaperInfo(self, info):
+            self._wallpaperInfo = info
+            self.defaultPropertyChanged.emit()
+        def getTitle(self):
+            return self._wallpaperInfo.caption if self._wallpaperInfo else "No Wallpaper"
+        title = Property(str, getTitle, notify=defaultPropertyChanged)
+        def getContent(self):
+            return self._wallpaperInfo.copyright if self._wallpaperInfo else "No Wallpaper ..."
+        content = Property(str, getContent, notify=defaultPropertyChanged)
+        @Slot()
+        def onButtonSettings(self):
+            self.buttonSettingsClicked.emit()
+        @Slot()
+        def onButtonRefresh(self):
+            self.buttonRefreshClicked.emit()
 
     class QuickWidget(QQuickWidget):
         resized = Signal(QResizeEvent)
         def __init__(self, parent=None):
+            package.registerType(DesktopWidget.QuickHolder, "QuickHolder")
             super().__init__(parent)
             self.parent = parent
             self.holder = DesktopWidget.QuickHolder(self)
@@ -330,6 +394,8 @@ class DesktopWidget(QWidget):
                 parent.mouseEntered.connect(self.onParentMouseEntered)
                 parent.mouseExited.connect(self.onParentMouseExited)
                 parent.mouseMoved.connect(self.onParentMouseMoved)
+                self.holder.buttonSettingsClicked.connect(parent.onButtonSettings)
+                self.holder.buttonRefreshClicked.connect(parent.onButtonRefresh)
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
             self.setClearColor(Qt.transparent)
             self.setMouseTracking(True)
@@ -359,18 +425,19 @@ class DesktopWidget(QWidget):
             if Rect(qrect=self.geometry()).has(Point(qpoint=event.pos())):
                 if not self._mouseEntered:
                     self._mouseEntered = True
-                    # self.holder.mouseEntered.emit(MouseEvent(qmouseevent=event, widget=self))
                     self.holder.mouseEntered.emit()
             else:
                 if self._mouseEntered:
                     self._mouseEntered = False
-                    # self.holder.mouseExited.emit(MouseEvent(qmouseevent=event, widget=self))
                     self.holder.mouseExited.emit()
         def resizeEvent(self, event):
             super().resizeEvent(event)
+            print("resizeEvent", event.oldSize(), event.size())
             self.resized.emit(event)
         @property
         def dragging(self):
             return QQmlProperty.read(self.rootObject(), "dragging")
+
+
 
 

@@ -1,6 +1,7 @@
 import QtQuick 2.11
 import QtQuick.Layouts 1.11
 import QtQuick.Controls 2.4
+import QtQml 2.11
 
 import "./components"
 
@@ -15,6 +16,14 @@ Item {
     hoverEnabled: true
     anchors.fill: rootlayout
   }
+  Timer {
+    interval: 1000
+    repeat: true
+    running: true
+    onTriggered: {
+      console.log(rootlayout.width, rootlayout.height)
+    }
+  }
   Column {
     id: rootlayout
     spacing: 5
@@ -25,6 +34,26 @@ Item {
     property bool _entered: false
     signal entered()
     signal exited()
+    Timer {
+      id: delayedExitTimer
+      interval: 100
+      repeat: false
+      onTriggered: function() {
+        if (rootlayout._entered) {
+          rootlayout._entered = false;
+          rootlayout.exited();
+        }
+      }
+    }
+    function delayedExit() {
+      cancelDelayedExit();
+      delayedExitTimer.start();
+    }
+    function cancelDelayedExit() {
+      if (delayedExitTimer.running) {
+        delayedExitTimer.stop();
+      }
+    }
     Connections {
       target: holder
       onMouseMoved: function(event) {
@@ -33,19 +62,15 @@ Item {
           if (!rootlayout._entered) {
             rootlayout._entered = true;
             rootlayout.entered();
+          } else {
+            rootlayout.cancelDelayedExit();
           }
         } else {
-          if (rootlayout._entered) {
-            rootlayout._entered = false;
-            rootlayout.exited();
-          }
+          rootlayout.delayedExit();
         }
       }
       onMouseExited: function() {
-        if (rootlayout._entered) {
-          rootlayout._entered = false;
-          rootlayout.exited();
-        }
+        rootlayout.delayedExit();
       }
     }
     Connections {
@@ -55,7 +80,8 @@ Item {
     }
     Item {
       id: content_block_upper
-      visible: fabutton_info.active
+      // visible: fabutton_info.active
+      visible: root.showbuttons
       height: content_block_upper_cardtext.height
       width: mainrow.width
       CardBackground {
@@ -77,7 +103,7 @@ Item {
       BlockButton {
         id: title_button
         text: holder.title
-        Layout.minimumWidth: 350
+        Layout.minimumWidth: 250
         Layout.maximumWidth: 400
         Layout.preferredWidth: this.cardtext.contentWidth
         cardtext.width: this.width
@@ -87,15 +113,19 @@ Item {
         visible: root.showbuttons
         text: this.icon_sliders_h
         Layout.fillHeight: true
+        Connections {
+          target: fabutton_config.mousearea
+          onClicked: { holder.onButtonSettings() }
+        }
       }
       FAButton {
-        id: fabutton_info
+        id: fabutton_refresh
         visible: root.showbuttons
-        text: this.icon_question
+        text: this.icon_sync_alt
         Layout.fillHeight: true
         Connections {
-          target: fabutton_info.mousearea
-          onClicked: { fabutton_info.active = !fabutton_info.active }
+          target: fabutton_refresh.mousearea
+          onClicked: { holder.onButtonRefresh() }
         }
       }
     }

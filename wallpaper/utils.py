@@ -13,3 +13,9 @@ def setTimeout(callback, interval):
     thread = threading.Thread(target=thread_fn)
     thread.setDaemon(True)
     thread.start()
+
+def safeInt(val):
+    try:
+        return int(val)
+    except Exception:
+        return None

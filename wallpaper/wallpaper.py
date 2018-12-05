@@ -11,3 +11,4 @@ def set_wallpaper(imagepath):
     # targetpath = os.path.join(system.appdatadir, "wallpaper.jpg")
     targetpath = imagepath
     win32gui.SystemParametersInfo(win32con.SPI_SETDESKWALLPAPER, targetpath, 1+2)
+

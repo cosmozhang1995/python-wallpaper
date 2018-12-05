@@ -6,6 +6,7 @@ import datetime
 import cv2
 import json
 import re
+import random
 
 hosturl = "https://cn.bing.com"
 
@@ -45,13 +46,13 @@ class BingWallpaper:
         self._image = None
     @property
     def name(self):
-        return  "%s-%s" % (self.date.strftime("%Y-%m-%d"), self.hsh)
+        return  "%s-%s.%s" % (self.date.strftime("%Y-%m-%d"), self.hsh, self.postfix)
     @property
     def jsonpath(self):
-        return os.path.join(self.manager.vendordir, self.name + "." + self.postfix + ".json")
+        return os.path.join(self.manager.datadir, self.name + ".json")
     @property
     def imagepath(self):
-        return os.path.join(self.manager.vendordir, self.name + "." + self.postfix)
+        return os.path.join(self.manager.datadir, self.name)
     @property
     def info(self):
         if self._info is None:
@@ -64,12 +65,48 @@ class BingWallpaper:
         return self._image
     sortkey = lambda item: item.name
 
+class BingWallpaperStatus:
+    def __init__(self, item=None, updatetime=None, json=None, filepath=None):
+        self.item = item
+        self.updatetime = updatetime
+        if filepath:
+            self.load(filepath)
+        if json:
+            self.json = json
+    @property
+    def json(self):
+        return {
+            "name": self.item.name if self.item else None,
+            "updatetime": self.updatetime.strftime("%Y-%m-%d %H:%M:%S") if self.updatetime else None
+        }
+    @json.setter
+    def json(self, val):
+        if isinstance(val, str): val = json.loads(val)
+        self.item = BingWallpaper(name=val["name"]) if "name" in val else None
+        self.updatetime = datetime.datetime.strptime(val["updatetime"], "%Y-%m-%d %H:%M:%S") if "updatetime" in val else None
+    def update(self, fileitem, savepath=None):
+        self.item = fileitem
+        self.updatetime = datetime.datetime.now()
+        if savepath:
+            self.save(savepath)
+    def save(self, filepath):
+        file = open(filepath, "wb")
+        file.write(json.dumps(self.json, indent=4).encode("utf-8"))
+        file.close()
+    def load(self, filepath):
+        if os.path.isfile(filepath):
+            file = open(filepath, "rb")
+            self.json = file.read().decode("utf-8")
+            file.close()
 
 class BingManager:
     def __init__(self):
         self.vendordir = os.path.join(system.appdatadir, "bing-wallpapers")
         if not os.path.isdir(self.vendordir): os.mkdir(self.vendordir)
-        self.files = [re.match(r"((\d+\-\d+\-\d+\-\w+)\.(\w+))\.json", fname) for fname in os.listdir(self.vendordir)]
+        self.datadir = os.path.join(self.vendordir, "downloads")
+        if not os.path.isdir(self.datadir): os.mkdir(self.datadir)
+        self.statusfile = os.path.join(self.vendordir, "status.json")
+        self.files = [re.match(r"((\d+\-\d+\-\d+\-\w+)\.(\w+))\.json", fname) for fname in os.listdir(self.datadir)]
         self.files = list(filter(lambda fname: not fname is None, self.files))
         self.files = [BingWallpaper(manager=self, name=fname.group(1)) for fname in self.files]
         self.files.sort(key=BingWallpaper.sortkey)
@@ -77,6 +114,7 @@ class BingManager:
         self._in_update = False
         self._update_callbacks = []
         self.curridx = -1
+        self.status = BingWallpaperStatus(filepath=self.statusfile)
     def update(self, callback=None):
         if callback:
             self._update_callbacks.append(callback)
@@ -140,13 +178,32 @@ class BingManager:
         file.close()
         outlist[i] = wallpaperitem
     def next(self):
+        fileitem = None
         if len(self.newfiles) > 0:
             newfile = self.newfiles[0]
             self.newfiles = self.newfiles[1:]
-            return newfile
+            fileitem = newfile
         elif len(self.files) > 0:
             self.curridx = (self.curridx + 1) % len(self.files)
-            return self.files[self.curridx]
+            fileitem = self.files[self.curridx]
+        self.status.update(fileitem, savepath=self.statusfile)
+        return fileitem
+    def random(self, **kwargs):
+        filterfn = None
+        limit = None
+        if "filter" in kwargs: filterfn = kwargs["filter"]
+        if "limit" in kwargs: limit = kwargs["limit"]
+        filelist = self.files
+        if filterfn: filelist = list(filter(filterfn, filelist))
+        if limit: filelist = filelist[-limit:]
+        if len(filelist) > 0:
+            fileitem = filelist[int(random.random()*len(filelist))]
+            self.newfiles = list(filter(lambda item: item.name != fileitem.name, self.newfiles))
         else:
-            return None
+            fileitem = None
+        self.status.update(fileitem, savepath=self.statusfile)
+        return fileitem
+
+    
+
 
