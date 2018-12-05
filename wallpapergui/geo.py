@@ -39,7 +39,7 @@ class Point:
         return isPointInRect(self, rect)
 
 class Rect:
-    def __init__(self, left=0, top=0, right=0, bottom=0, winapi_rect=None, qrect=None):
+    def __init__(self, left=None, top=None, right=None, bottom=None, width=None, height=None, winapi_rect=None, qrect=None):
         if winapi_rect:
             self.left = winapi_rect[0]
             self.top = winapi_rect[1]
@@ -51,6 +51,12 @@ class Rect:
             self.top = qrect.top()
             self.bottom = qrect.bottom() + 1
         else:
+            if left is None: left = 0
+            if top is None: top = 0
+            if width is None: width = 0
+            if height is None: height = 0
+            if right is None: right = left + width
+            if bottom is None: bottom = top + height
             self.left = left
             self.top = top
             self.right = right

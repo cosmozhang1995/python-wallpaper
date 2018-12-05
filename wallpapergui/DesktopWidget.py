@@ -11,6 +11,7 @@ from PySide2.QtQml import qmlRegisterType
 import requests
 import json
 import datetime
+import time
 
 from wallpaper.wallpaper import set_wallpaper
 from wallpaper.userconfig import UserConfig
@@ -126,17 +127,13 @@ class DesktopWidget(QWidget):
             monitor = MonitorInfo.get(primary=True)
             self.windowPosition = WindowPosition(monitor=monitor, x=0, y=0, width=0, height=0, anchor=WindowPosition.ANCHOR_LEFT|WindowPosition.ANCHOR_TOP)
         # set as frameless transparent window
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        # self.setAttribute(Qt.WidgetAttribute.WA_AlwaysStackOnTop, True)
-        # self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+        # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setMouseTracking(True)
         self.quick = DesktopWidget.QuickWidget(self)
         self.layout = QVBoxLayout()
         self.layout.setSpacing(0)
         self.layout.addWidget(self.quick)
         self.setLayout(self.layout)
-        # self.setAutoFillBackground(True)
-        # self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
         self.quick.load()
         # build system tray menu
         self.systemTray = QSystemTrayIcon(self)
@@ -193,10 +190,18 @@ class DesktopWidget(QWidget):
     def moveWindow(self, winpos):
         hDesktop = findDesktopIconWnd()
         rectDesktop = Rect(winapi_rect=win32gui.GetWindowRect(hDesktop))
-        # win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, winpos.width, winpos.height, True)
-        win32gui.MoveWindow(self.winId(), winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, self.sizeHint().width(), self.sizeHint().height(), True)
+        # resultgeo = Rect(winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, width=winpos.width, height=winpos.height)
+        resultgeo = Rect(winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, width=self.sizeHint().width(), height=self.sizeHint().height())
+        print("resultgeo", resultgeo.width, resultgeo.height)
+        win32gui.MoveWindow(self.winId(), resultgeo.left, resultgeo.top, resultgeo.width, resultgeo.height, True)
+        while True:
+            winpos = self.calculateWindowPosition()
+            if winpos.width == resultgeo.width and winpos.height == resultgeo.height:
+                break
+            time.sleep(0.01)
         if self.hParent and not self.holdWindowPosition:
             self.windowPosition = self.calculateWindowPosition()
+            print("moveWindow", self.windowPosition.width, self.windowPosition.height)
 
     def show(self):
         super().show()
@@ -235,8 +240,7 @@ class DesktopWidget(QWidget):
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
-        if self.quick.dragging:
-            self.dragging = True
+        self.dragging = True
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
         self.mouseMoved.emit(event)
@@ -253,8 +257,8 @@ class DesktopWidget(QWidget):
             self.mousePressWindowPos = self.calculateWindowPosition(force_anchor=WindowPosition.ANCHOR_LEFT|WindowPosition.ANCHOR_TOP)
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
+        self.dragging = False
         if self.mousePressPos:
-            self.dragging = False
             pos = Point(qpoint=event.globalPos())
             dx = pos.x - self.mousePressPos.x
             dy = pos.y - self.mousePressPos.y
@@ -269,18 +273,20 @@ class DesktopWidget(QWidget):
 
 
     def onResizeEvent(self, event):
-        winpos = self.windowPosition.copy()
-        if not self.hParent:
-            # this is the initialization of windowPosition
-            winpos.width = self.width()
-            winpos.height = self.height()
-            self.windowPosition = winpos
-        else:
-            print(winpos.width, winpos.height)
-            winpos.width += event.size().width() - event.oldSize().width()
-            winpos.height += event.size().height() - event.oldSize().height()
-            print(winpos.width, winpos.height)
-            self.moveWindow(winpos)
+        print("onResizeEvent", event.oldSize(), event.size(), self.quick.sizeHint())
+        # winpos = self.windowPosition.copy()
+        # print("get windowPosition", self.windowPosition.width, self.windowPosition.height)
+        # if not self.hParent:
+        #     # this is the initialization of windowPosition
+        #     winpos.width = self.width()
+        #     winpos.height = self.height()
+        #     self.windowPosition = winpos
+        # else:
+        #     print("before resize", winpos.width, winpos.height)
+        #     winpos.width += event.size().width() - event.oldSize().width()
+        #     winpos.height += event.size().height() - event.oldSize().height()
+        #     print("after resize", winpos.width, winpos.height)
+        #     self.moveWindow(winpos)
 
     def onHoldWindowPosition(self, holding):
         self.holdWindowPosition = holding
@@ -309,7 +315,7 @@ class DesktopWidget(QWidget):
 
     @Slot()
     def onTimerTimeout(self):
-        print("DesktopWidget", self.width(), self.height())
+        # print("DesktopWidget", self.width(), self.height())
         if not self.timerClear: return
         if self.manager.status.updatetime is None:
             self.changeWallpaper()

@@ -10,7 +10,7 @@ Item {
   width: rootlayout.width + 10
   height: rootlayout.height + 10
   property bool dragging: title_button.mousearea.pressed
-  property bool showbuttons: !this.dragging && (mousearea.containsMouse || rootlayout.hover) // && !this.dragging
+  property bool showbuttons: mousearea.containsMouse || rootlayout.hover
   MouseArea {
     id: mousearea
     hoverEnabled: true
@@ -21,7 +21,7 @@ Item {
     repeat: true
     running: true
     onTriggered: {
-      console.log(rootlayout.width, rootlayout.height)
+      console.log(title_button.width, title_button.height)
     }
   }
   Column {
