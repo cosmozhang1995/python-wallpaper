@@ -1,13 +1,15 @@
 import sys,os
 
-from PySide2.QtCore import Qt, QObject, Signal, Slot, QPoint, QSize, QUrl, QEvent, Property, QTimer
-from PySide2.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QSystemTrayIcon, QMenu, QAction
-from PySide2.QtGui import QPainter, QColor, QIcon, QMouseEvent, QResizeEvent, QFont
+from PyQt5.QtCore import Qt, QObject, pyqtSlot, QPoint, QSize, QUrl, QEvent, QTimer
+from PyQt5.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QSystemTrayIcon, QMenu, QAction
+from PyQt5.QtGui import QPainter, QColor, QIcon, QMouseEvent, QResizeEvent, QFont
 
 import requests
 import json
 import datetime
 import time
+import ctypes
+from ctypes import wintypes
 
 from wallpaper.wallpaper import set_wallpaper
 from wallpaper.userconfig import UserConfig
@@ -16,6 +18,15 @@ from wallpaper.manager.bing import BingManager
 
 from .utils import setTimeout
 from .geo import Rect, Point
+
+class WINDOWPOS(ctypes.Structure):
+    _fields_ = [("hwnd", wintypes.HWND),
+                ("hwndInsertAfter", wintypes.HWND),
+                ("x", ctypes.c_int),
+                ("y", ctypes.c_int),
+                ("cx", ctypes.c_int),
+                ("cy", ctypes.c_int),
+                ("flags", ctypes.c_uint)]
 
 import win32con, win32gui, win32api
 def findDesktopIconWnd():
@@ -104,6 +115,7 @@ class DesktopWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.hParent = 0
+        self.ready = False
         # properties
         self.userconfig = UserConfig()
         self.manager = BingManager()
@@ -164,14 +176,21 @@ class DesktopWidget(QWidget):
             }
             """)
         self.layout = QVBoxLayout()
-        layout = QHBoxLayout()
+        class CHBoxLayout(QHBoxLayout):
+            def minimumSize(self):
+                size = super().minimumSize()
+                return QSize(250, size.height())
+            def maximumSize(self):
+                size = super().maximumSize()
+                return QSize(400, size.height())
+        self.layoutUpper = CHBoxLayout()
         self.labelUpper = QLabel()
-        layout.addWidget(self.labelUpper)
-        self.layout.addLayout(layout)
-        layout = QHBoxLayout()
+        self.layoutUpper.addWidget(self.labelUpper)
+        self.layout.addLayout(self.layoutUpper)
+        self.layoutMiddle = CHBoxLayout()
         self.labelTitle = QLabel("Hello World")
         self.labelTitle.setFixedHeight(40)
-        layout.addWidget(self.labelTitle)
+        self.layoutMiddle.addWidget(self.labelTitle)
         buttonfont = QFont()
         buttonfont.setFamily("Font Awesome 5 Free")
         buttonfont.setPointSize(18)
@@ -179,13 +198,13 @@ class DesktopWidget(QWidget):
         self.buttonSettings.setFont(buttonfont)
         self.buttonSettings.setText("\uf1de")
         self.buttonSettings.setFixedSize(40,40)
-        layout.addWidget(self.buttonSettings)
+        self.layoutMiddle.addWidget(self.buttonSettings)
         self.buttonRefresh = QPushButton()
         self.buttonRefresh.setFont(buttonfont)
         self.buttonRefresh.setText("\uf2f1")
         self.buttonRefresh.setFixedSize(40,40)
-        layout.addWidget(self.buttonRefresh)
-        self.layout.addLayout(layout)
+        self.layoutMiddle.addWidget(self.buttonRefresh)
+        self.layout.addLayout(self.layoutMiddle)
         self.setLayout(self.layout)
 
 
@@ -229,42 +248,47 @@ class DesktopWidget(QWidget):
         rectDesktop = Rect(winapi_rect=win32gui.GetWindowRect(hDesktop))
         # resultgeo = Rect(winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, width=winpos.width, height=winpos.height)
         resultgeo = Rect(winpos.left + winpos.monitor.work.left - rectDesktop.left, winpos.top + winpos.monitor.work.top - rectDesktop.top, width=self.sizeHint().width(), height=self.sizeHint().height())
-        print("resultgeo", resultgeo.left, resultgeo.top, resultgeo.width, resultgeo.height)
+        # print("resultgeo", resultgeo.left, resultgeo.top, resultgeo.width, resultgeo.height)
         win32gui.MoveWindow(self.winId(), resultgeo.left, resultgeo.top, resultgeo.width, resultgeo.height, True)
-        # while True:
-        #     winpos = self.calculateWindowPosition()
-        #     if winpos.width == resultgeo.width and winpos.height == resultgeo.height:
-        #         break
-        #     time.sleep(0.01)
         if self.hParent and not self.holdWindowPosition:
-            # winpos = winpos.copy()
-            # winpos.width = resultgeo.width
-            # winpos.height = resultgeo.height
-            self.windowPosition = winpos
             self.windowPosition = self.calculateWindowPosition()
-            print("moveWindow", self.windowPosition.left, self.windowPosition.top)
+            # print("moveWindow", self.windowPosition.left, self.windowPosition.top)
 
-    def sizeHint(self):
-        return QSize(400,300)
+    def nativeEvent(self, eventType, message):
+        msg = wintypes.MSG.from_address(int(message))
+        if self.ready:
+            if eventType==b'windows_generic_MSG':
+                if msg.message == win32con.WM_WINDOWPOSCHANGING:
+                    params = WINDOWPOS.from_address(int(msg.lParam))
+                    print("WM_WINDOWPOSCHANGING", int(params.hwndInsertAfter))
+                    params.hwndInsertAfter = win32con.HWND_BOTTOM
+                    # winId = self.winId()
+                    # if not winId is None:
+                    #     print("Move to bottom")
+                    #     win32gui.SetWindowPos(self.winId(), win32con.HWND_BOTTOM, 0, 0, 0, 0, win32con.SWP_NOMOVE|win32con.SWP_NOSIZE)
+        return super().nativeEvent(eventType, message)
 
     def show(self):
         super().show()
-        hDesktop = findDesktopIconWnd()
-        win32gui.SetParent(self.winId(), hDesktop)
-        self.hParent = hDesktop
-        lWinStyle = win32gui.GetWindowLong(self.winId(), win32con.GWL_STYLE)
-        lWinStyle = lWinStyle & (~win32con.WS_CAPTION)
-        lWinStyle = lWinStyle & (~win32con.WS_SYSMENU)
-        lWinStyle = lWinStyle & (~win32con.WS_MAXIMIZEBOX)
-        lWinStyle = lWinStyle & (~win32con.WS_MINIMIZEBOX)
-        lWinStyle = lWinStyle & (~win32con.WS_SIZEBOX)
-        win32gui.SetWindowLong(self.winId(), win32con.GWL_STYLE, lWinStyle)
-        print(hDesktop, self.winId())
-        def delayedMove():
-            self.moveWindow(self.windowPosition)
-        setTimeout(delayedMove, 0.01)
-        # self.moveWindow(self.windowPosition)
-        # self.timer.start()
+        # hDesktop = findDesktopIconWnd()
+        # win32gui.SetParent(self.winId(), hDesktop)
+        # self.hParent = hDesktop
+        # lWinStyle = win32gui.GetWindowLong(self.winId(), win32con.GWL_STYLE)
+        # lWinStyle = lWinStyle & (~win32con.WS_CAPTION)
+        # lWinStyle = lWinStyle & (~win32con.WS_SYSMENU)
+        # lWinStyle = lWinStyle & (~win32con.WS_MAXIMIZEBOX)
+        # lWinStyle = lWinStyle & (~win32con.WS_MINIMIZEBOX)
+        # lWinStyle = lWinStyle & (~win32con.WS_SIZEBOX)
+        # win32gui.SetWindowLong(self.winId(), win32con.GWL_STYLE, lWinStyle)
+        # print(hDesktop, self.winId())
+        # def delayedMove():
+        #     self.moveWindow(self.windowPosition)
+        # setTimeout(delayedMove, 0.01)
+        # # self.moveWindow(self.windowPosition)
+        # # self.timer.start()
+        def delayedReady():
+            self.ready = True
+        setTimeout(delayedReady, 0.01)
 
     def onTrayActionClose(self):
         self.close()
@@ -273,10 +297,6 @@ class DesktopWidget(QWidget):
     def onTrayActionReload(self):
         self.web.reload()
         self.web.page().setWebChannel(self.webchan)
-
-    mouseEntered = Signal(QEvent)
-    mouseExited = Signal(QEvent)
-    mouseMoved = Signal(QMouseEvent)
 
     # def moveEvent(self, event):
     #     super().moveEvent(event)
@@ -287,17 +307,18 @@ class DesktopWidget(QWidget):
 
     def enterEvent(self, event):
         super().enterEvent(event)
-        self.mouseEntered.emit(event)
+        self.labelUpper.setVisible(True)
     def leaveEvent(self, event):
         super().leaveEvent(event)
-        self.mouseExited.emit(event)
+        self.labelUpper.setVisible(False)
+        self.labelTitle.setText("HHHH")
+        self.update()
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
         self.dragging = True
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
-        self.mouseMoved.emit(event)
         if self.mousePressPos:
             pos = Point(qpoint=event.globalPos())
             dx = pos.x - self.mousePressPos.x
@@ -326,8 +347,10 @@ class DesktopWidget(QWidget):
 
 
 
-    def onResizeEvent(self, event):
-        print("onResizeEvent", event.oldSize(), event.size(), self.quick.sizeHint())
+    def resizeEvent(self, event):
+        print("resizeEvent")
+        super().resizeEvent(event)
+        # print("onResizeEvent", event.oldSize(), event.size(), self.quick.sizeHint())
         # winpos = self.windowPosition.copy()
         # print("get windowPosition", self.windowPosition.width, self.windowPosition.height)
         # if not self.hParent:
@@ -367,7 +390,7 @@ class DesktopWidget(QWidget):
                 self.manager.update()
             self.timerClear = True
 
-    @Slot()
+    @pyqtSlot()
     def onTimerTimeout(self):
         # print("DesktopWidget", self.width(), self.height())
         if not self.timerClear: return
@@ -399,12 +422,10 @@ class DesktopWidget(QWidget):
         else:
             return default
 
-    wallpaperChanged = Signal()
-
-    @Slot()
+    @pyqtSlot()
     def onButtonSettings(self):
         pass
-    @Slot()
+    @pyqtSlot()
     def onButtonRefresh(self):
         self.changeWallpaper()
 

@@ -1,6 +1,6 @@
-from PySide2.QtWidgets import QApplication
-from PySide2.QtGui import QFontDatabase
-from PySide2.QtCore import QUrl
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QFontDatabase
+from PyQt5.QtCore import QUrl
 from wallpaper.system import system
 import os
 
